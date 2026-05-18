@@ -127,7 +127,7 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
 
         for r in records:
             try:
-                # 删旧插新（同 keyword + domain + period）
+                # 删旧插新（同 keyword + domain）
                 existing = db.query(SellerspriteKeyword).filter(
                     SellerspriteKeyword.keyword == r["keyword"],
                     SellerspriteKeyword.domain == domain,
@@ -144,6 +144,7 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
                     data_period=data_period,
                     search_volume=r.get("search_volume", 0),
                     purchases_90d=r.get("purchases", 0),
+                    clicks=r.get("clicks", 0),
                     search_conversion_rate=r.get("purchase_rate", 0) * 100,
                     click_conversion_rate=r.get("conv_share", 0) * 100,
                     cpc_recommended=r.get("cpc", 0),

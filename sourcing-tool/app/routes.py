@@ -9,12 +9,13 @@ from pathlib import Path
 from io import BytesIO
 
 from fastapi import APIRouter, UploadFile, File, Form, Request, Query
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .models import SessionLocal, Candidate, Batch, AsinKeyword, init_db, AbaReport, SellerspriteKeyword, SellerspriteProduct, WordRoot, NicheTrack
+from .models import SessionLocal, Candidate, Batch, AsinKeyword, init_db, AbaReport, SellerspriteKeyword, SellerspriteProduct, WordRoot, NicheTrack, Project
 from .pipeline import run_pipeline, PipelineProgress
 from .aba_processor import parse_aba_excel, detect_aba_format, parse_metadata
+from .auth import check_auth, set_auth_cookie
 
 router = APIRouter()
 
@@ -52,11 +53,68 @@ def _pipeline_thread(batch_id: str, filepath: str, domain: int, config: dict, mo
         _pipeline_states[batch_id] = {"status": "failed", "error": str(e), "progress": progress}
 
 
+# ── 认证路由 ────────────────────────────────────
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """登录页（不依赖 base.html）。"""
+    if check_auth(request):
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse(request, "login.html")
+
+
+@router.post("/api/auth/login")
+async def api_auth_login(request: Request):
+    """验证密码，设 cookie。"""
+    from .auth import APP_PASSWORD, _hash
+    body = await request.json()
+    password = body.get("password", "")
+    if password == APP_PASSWORD:
+        response = RedirectResponse(url="/", status_code=302)
+        set_auth_cookie(response)
+        return response
+    return HTMLResponse(status_code=401)
+
+
+@router.get("/api/auth/logout")
+async def api_auth_logout():
+    """清除认证 cookie。"""
+    from .auth import COOKIE_NAME
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie(COOKIE_NAME)
+    return response
+
+
 # ── 页面路由 ────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
 async def index_page(request: Request):
+    """项目列表首页。"""
+    return templates.TemplateResponse(request, "project-list.html")
+
+
+@router.get("/pipeline", response_class=HTMLResponse)
+async def pipeline_page(request: Request):
+    """旧版 pipeline 页（保留兼容）。"""
     return templates.TemplateResponse(request, "index.html")
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_redirect(request: Request):
+    """旧版 /dashboard → 重定向到首页。"""
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/projects/new", response_class=HTMLResponse)
+async def project_create_page(request: Request):
+    """新建项目页（上传流程）。"""
+    return templates.TemplateResponse(request, "project-create.html")
+
+
+@router.get("/projects/{project_id}", response_class=HTMLResponse)
+async def project_kanban_page(request: Request, project_id: int):
+    """项目看板页。"""
+    return templates.TemplateResponse(request, "project-kanban.html", {"project_id": project_id})
 
 
 @router.post("/upload", response_class=HTMLResponse)
@@ -1364,6 +1422,462 @@ async def dashboard_delete_niche(niche_id: int):
     db = SessionLocal()
     try:
         r = db.query(NicheTrack).filter(NicheTrack.id == niche_id).first()
+        if not r:
+            return {"error": "赛道不存在"}
+        db.delete(r)
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════
+# 项目 CRUD
+# ═══════════════════════════════════════════════════════
+
+@router.post("/api/projects")
+async def api_create_project(request: Request):
+    """创建项目。"""
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        return {"error": "项目名称不能为空"}
+    db = SessionLocal()
+    try:
+        p = Project(
+            name=name,
+            description=body.get("description", ""),
+            domain=body.get("domain", "US"),
+            keyword_batch_label=body.get("keyword_batch_label", ""),
+            product_batch_label=body.get("product_batch_label", ""),
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+        return {"success": True, "id": p.id, "name": p.name}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@router.get("/api/projects")
+async def api_list_projects():
+    """列出所有项目，含摘要数据。"""
+    db = SessionLocal()
+    try:
+        projects = db.query(Project).order_by(Project.created_at.desc()).all()
+        result = []
+        for p in projects:
+            kw_count = db.query(SellerspriteKeyword).filter(
+                SellerspriteKeyword.batch_id == p.keyword_batch_label
+            ).count() if p.keyword_batch_label else 0
+            prod_count = db.query(SellerspriteProduct).filter(
+                SellerspriteProduct.batch_id == p.product_batch_label
+            ).count() if p.product_batch_label else 0
+            result.append({
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "domain": p.domain,
+                "keyword_batch_label": p.keyword_batch_label,
+                "product_batch_label": p.product_batch_label,
+                "keyword_count": kw_count,
+                "product_count": prod_count,
+                "created_at": p.created_at.isoformat() if p.created_at else "",
+            })
+        return {"projects": result}
+    finally:
+        db.close()
+
+
+@router.get("/api/projects/{project_id}")
+async def api_get_project(project_id: int):
+    """获取单个项目详情。"""
+    db = SessionLocal()
+    try:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return {"error": "项目不存在"}
+        return {
+            "id": p.id, "name": p.name, "description": p.description,
+            "domain": p.domain, "keyword_batch_label": p.keyword_batch_label,
+            "product_batch_label": p.product_batch_label,
+            "created_at": p.created_at.isoformat() if p.created_at else "",
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/api/projects/{project_id}")
+async def api_delete_project(project_id: int):
+    """删除项目（保留关联数据）。"""
+    db = SessionLocal()
+    try:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return {"error": "项目不存在"}
+        db.delete(p)
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════
+# 项目看板 API
+# ═══════════════════════════════════════════════════════
+
+@router.get("/api/projects/{project_id}/kanban")
+async def api_project_kanban(project_id: int):
+    """项目看板核心数据。"""
+    db = SessionLocal()
+    try:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return {"error": "项目不存在"}
+
+        # 词根
+        roots = db.query(WordRoot).filter(
+            WordRoot.batch_label == p.keyword_batch_label,
+            WordRoot.domain == p.domain,
+        ).order_by(WordRoot.frequency.desc()).all()
+
+        # 月份列表
+        kw_periods = db.query(SellerspriteKeyword.data_period).filter(
+            SellerspriteKeyword.domain == p.domain,
+            SellerspriteKeyword.batch_id == p.keyword_batch_label,
+            SellerspriteKeyword.data_period != "",
+        ).distinct().all()
+        prod_periods = db.query(SellerspriteProduct.data_period).filter(
+            SellerspriteProduct.domain == p.domain,
+            SellerspriteProduct.batch_id == p.product_batch_label,
+            SellerspriteProduct.data_period != "",
+        ).distinct().all()
+        all_periods = sorted(set(r[0] for r in kw_periods + prod_periods if r[0]))
+
+        return {
+            "project": {"id": p.id, "name": p.name, "domain": p.domain,
+                        "keyword_batch_label": p.keyword_batch_label,
+                        "product_batch_label": p.product_batch_label},
+            "roots": [{"word": r.word, "frequency": r.frequency} for r in roots],
+            "periods": all_periods,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/api/projects/{project_id}/filter")
+async def api_project_filter(project_id: int, body: dict):
+    """按词根组合筛选关键词和 ASIN。"""
+    db = SessionLocal()
+    try:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return {"error": "项目不存在"}
+
+        domain = p.domain
+        root_words = body.get("root_words", [])
+        data_period = body.get("data_period", "")
+
+        kw_query = db.query(SellerspriteKeyword).filter(
+            SellerspriteKeyword.domain == domain,
+            SellerspriteKeyword.batch_id == p.keyword_batch_label,
+        )
+        if data_period:
+            kw_query = kw_query.filter(SellerspriteKeyword.data_period == data_period)
+        kw_rows = kw_query.all()
+
+        stop_words = _get_stop_words()
+        matched_keywords = []
+        for row in kw_rows:
+            if root_words:
+                kw_lower = row.keyword.lower()
+                words = set(w for w in re.split(r"[^a-z0-9]+", kw_lower) if len(w) >= 2 and w not in stop_words)
+                if not all(r in words for r in root_words):
+                    continue
+            matched_keywords.append(row)
+
+        matched_asins_set = set()
+        for row in matched_keywords:
+            if row.top10_asins:
+                for a in row.top10_asins.split(","):
+                    a = a.strip()
+                    if a.startswith("B0"):
+                        matched_asins_set.add(a)
+
+        products = {}
+        if matched_asins_set:
+            prod_query = db.query(SellerspriteProduct).filter(
+                SellerspriteProduct.domain == domain,
+                SellerspriteProduct.asin.in_(matched_asins_set),
+            )
+            if data_period:
+                prod_query = prod_query.filter(SellerspriteProduct.data_period == data_period)
+            products = {pr.asin: pr for pr in prod_query.all()}
+
+        kw_data = []
+        for row in matched_keywords:
+            raw = json.loads(row.raw_response) if row.raw_response else {}
+            kw_data.append({
+                "keyword": row.keyword,
+                "keyword_cn": row.keyword_cn or raw.get("keyword_cn", ""),
+                "search_volume": row.search_volume or 0,
+                "purchases": row.purchases_90d or 0,
+                "clicks": row.clicks or 0,
+                "purchase_rate": round((row.search_conversion_rate or 0), 1),
+                "cpc": round(row.cpc_recommended or 0, 2),
+                "avg_price": round(row.avg_price or 0, 2),
+                "click_share": round((row.click_share or 0), 1),
+                "conv_share": round((row.conv_share or 0), 1),
+                "product_count": raw.get("product_count", 0),
+                "review_count": raw.get("review_count", 0),
+                "rating": raw.get("rating", 0),
+            })
+
+        asin_data = []
+        for asin in sorted(matched_asins_set):
+            pr = products.get(asin)
+            raw = json.loads(pr.raw_response) if pr and pr.raw_response else {}
+            asin_data.append({
+                "asin": asin,
+                "title": pr.title if pr else "",
+                "brand": pr.brand if pr else "",
+                "price": round(pr.price, 2) if pr and pr.price else 0,
+                "monthly_sales": pr.monthly_sales if pr else 0,
+                "monthly_revenue": round(pr.monthly_revenue, 2) if pr and pr.monthly_revenue else 0,
+                "bsr": pr.main_bsr if pr else 0,
+                "ratings_count": pr.ratings_count if pr else 0,
+                "ratings": round(pr.ratings, 1) if pr and pr.ratings else 0,
+                "online_days": pr.online_days if pr else 0,
+                "is_fba": bool(pr.is_fba) if pr else False,
+                "category": pr.main_category if pr else "",
+                "seller_count": pr.seller_count if pr else 0,
+            })
+
+        summary = {
+            "keyword_count": len(kw_data),
+            "asin_count": len(asin_data),
+            "total_sv": sum(k["search_volume"] for k in kw_data),
+            "total_purchases": sum(k["purchases"] for k in kw_data),
+            "avg_cpc": round(sum(k["cpc"] for k in kw_data) / max(len(kw_data), 1), 2),
+            "avg_price": round(sum(k["avg_price"] for k in kw_data) / max(len(kw_data), 1), 2),
+            "total_monthly_sales": sum(a["monthly_sales"] for a in asin_data),
+            "total_monthly_revenue": round(sum(a["monthly_revenue"] for a in asin_data), 2),
+        }
+
+        return {"keywords": kw_data, "asins": asin_data, "summary": summary}
+    finally:
+        db.close()
+
+
+@router.get("/api/projects/{project_id}/trends")
+async def api_project_trends(project_id: int):
+    """项目趋势数据：YoY 增长率 + 时序曲线。"""
+    from sqlalchemy import func as sa_func
+
+    db = SessionLocal()
+    try:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        if not p:
+            return {"error": "项目不存在"}
+
+        # 按月聚合关键词数据
+        rows = db.query(
+            SellerspriteKeyword.data_period,
+            sa_func.sum(SellerspriteKeyword.search_volume).label("total_sv"),
+            sa_func.avg(SellerspriteKeyword.cpc_recommended).label("avg_cpc"),
+            sa_func.avg(SellerspriteKeyword.purchases_90d).label("avg_purchases"),
+            sa_func.avg(SellerspriteKeyword.clicks).label("avg_clicks"),
+            sa_func.count(SellerspriteKeyword.id).label("kw_count"),
+        ).filter(
+            SellerspriteKeyword.batch_id == p.keyword_batch_label,
+            SellerspriteKeyword.domain == p.domain,
+            SellerspriteKeyword.data_period != "",
+        ).group_by(SellerspriteKeyword.data_period).order_by(SellerspriteKeyword.data_period).all()
+
+        # 按月聚合 Top10 产品销量
+        # 先收集所有 ASIN
+        all_kw = db.query(SellerspriteKeyword.top10_asins, SellerspriteKeyword.data_period).filter(
+            SellerspriteKeyword.batch_id == p.keyword_batch_label,
+            SellerspriteKeyword.domain == p.domain,
+            SellerspriteKeyword.data_period != "",
+            SellerspriteKeyword.top10_asins != "",
+        ).all()
+        period_asins = {}
+        for top10, period in all_kw:
+            if period not in period_asins:
+                period_asins[period] = set()
+            for a in top10.split(","):
+                a = a.strip()
+                if a.startswith("B0"):
+                    period_asins[period].add(a)
+
+        top10_sales_by_period = {}
+        for period, asins in period_asins.items():
+            sales_rows = db.query(
+                SellerspriteProduct.monthly_sales
+            ).filter(
+                SellerspriteProduct.asin.in_(asins),
+                SellerspriteProduct.domain == p.domain,
+            ).order_by(SellerspriteProduct.monthly_sales.desc()).limit(10).all()
+            top10_sales_by_period[period] = sum(s[0] or 0 for s in sales_rows)
+
+        periods = []
+        traffic_current = []
+        traffic_yoy = []
+        cpc_current = []
+        cpc_yoy = []
+        cpa_current = []
+        cpa_yoy = []
+        top10_current = []
+        top10_yoy = []
+
+        # 构建 year → period → value 映射用于 YoY 计算
+        sv_by_period = {}
+        cpc_by_period = {}
+        cpa_by_period = {}
+        for r in rows:
+            pd_val = r.data_period
+            sv_by_period[pd_val] = r.total_sv or 0
+            cpc_by_period[pd_val] = r.avg_cpc or 0
+            avg_p = r.avg_purchases or 0
+            avg_c = r.avg_clicks or 0
+            cpa_by_period[pd_val] = r.avg_cpc / (avg_p / avg_c) if avg_c and avg_p and r.avg_cpc else 0
+
+        for r in rows:
+            pd_val = r.data_period
+            periods.append(pd_val)
+            sv = r.total_sv or 0
+            cpc = round(r.avg_cpc or 0, 2)
+            cpa = round(cpa_by_period.get(pd_val, 0), 2)
+            t10 = top10_sales_by_period.get(pd_val, 0)
+
+            traffic_current.append(sv)
+            cpc_current.append(cpc)
+            cpa_current.append(cpa)
+            top10_current.append(t10)
+
+            # YoY: 找去年同月
+            if len(pd_val) == 7 and "-" in pd_val:
+                year, month = pd_val.split("-")
+                prev_year = str(int(year) - 1)
+                prev_period = f"{prev_year}-{month}"
+            else:
+                prev_period = None
+
+            def _yoy(curr, prev):
+                if prev and prev > 0:
+                    return round((curr / prev - 1) * 100, 1)
+                return None
+
+            traffic_yoy.append(_yoy(sv, sv_by_period.get(prev_period)))
+            cpc_yoy.append(_yoy(cpc, cpc_by_period.get(prev_period)))
+            cpa_yoy.append(_yoy(cpa, cpa_by_period.get(prev_period)))
+            t10_prev = top10_sales_by_period.get(prev_period)
+            top10_yoy.append(_yoy(t10, t10_prev))
+
+        return {
+            "periods": periods,
+            "traffic": {"current": traffic_current, "yoy_growth": traffic_yoy},
+            "avg_cpc": {"current": cpc_current, "yoy_growth": cpc_yoy},
+            "avg_cpa": {"current": cpa_current, "yoy_growth": cpa_yoy},
+            "top10_sales": {"current": top10_current, "yoy_growth": top10_yoy},
+        }
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════
+# 项目赛道 CRUD
+# ═══════════════════════════════════════════════════════
+
+@router.post("/api/projects/{project_id}/niches")
+async def api_project_save_niche(project_id: int, body: dict):
+    """保存赛道到项目下。"""
+    db = SessionLocal()
+    try:
+        nt = NicheTrack(
+            name=body.get("name", ""),
+            project_id=project_id,
+            keyword_batch_label=body.get("keyword_batch_label", ""),
+            product_batch_label=body.get("product_batch_label", ""),
+            domain=body.get("domain", "US"),
+            root_words=json.dumps(body.get("root_words", []), ensure_ascii=False),
+            keyword_count=body.get("keyword_count", 0),
+            asin_count=body.get("asin_count", 0),
+            stats_snapshot=json.dumps(body.get("stats_snapshot", {}), ensure_ascii=False),
+        )
+        db.add(nt)
+        db.commit()
+        db.refresh(nt)
+        return {"success": True, "id": nt.id}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@router.get("/api/projects/{project_id}/niches")
+async def api_project_list_niches(project_id: int):
+    """列出项目下所有已保存赛道。"""
+    db = SessionLocal()
+    try:
+        rows = db.query(NicheTrack).filter(
+            NicheTrack.project_id == project_id,
+        ).order_by(NicheTrack.created_at.desc()).all()
+        return {
+            "niches": [{
+                "id": r.id,
+                "name": r.name,
+                "root_words": json.loads(r.root_words) if r.root_words else [],
+                "keyword_count": r.keyword_count,
+                "asin_count": r.asin_count,
+                "stats_snapshot": json.loads(r.stats_snapshot) if r.stats_snapshot else {},
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+            } for r in rows],
+        }
+    finally:
+        db.close()
+
+
+@router.get("/api/projects/{project_id}/niches/{niche_id}")
+async def api_project_get_niche(project_id: int, niche_id: int):
+    """获取赛道详情。"""
+    db = SessionLocal()
+    try:
+        r = db.query(NicheTrack).filter(NicheTrack.id == niche_id, NicheTrack.project_id == project_id).first()
+        if not r:
+            return {"error": "赛道不存在"}
+        return {
+            "id": r.id, "name": r.name,
+            "keyword_batch_label": r.keyword_batch_label,
+            "product_batch_label": r.product_batch_label,
+            "domain": r.domain,
+            "root_words": json.loads(r.root_words) if r.root_words else [],
+            "keyword_count": r.keyword_count,
+            "asin_count": r.asin_count,
+            "stats_snapshot": json.loads(r.stats_snapshot) if r.stats_snapshot else {},
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/api/projects/{project_id}/niches/{niche_id}")
+async def api_project_delete_niche(project_id: int, niche_id: int):
+    """删除赛道。"""
+    db = SessionLocal()
+    try:
+        r = db.query(NicheTrack).filter(NicheTrack.id == niche_id, NicheTrack.project_id == project_id).first()
         if not r:
             return {"error": "赛道不存在"}
         db.delete(r)

@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div x-data="projectCreate" x-init="init()" class="max-w-xl mx-auto space-y-6">
+
+    <!-- 移动端提示 -->
+    <div class="sm:hidden bg-yellow-800/50 border border-yellow-600 rounded-xl p-4 text-center">
+        <p class="text-yellow-300 text-sm">请在电脑端创建项目</p>
+        <a href="/" class="text-blue-400 text-xs mt-2 inline-block">← 返回项目列表</a>
+    </div>
+
+    <div class="hidden sm:block space-y-6">
+        <h1 class="text-xl font-bold">新建项目</h1>
+
+        <!-- Stage 1: 上传关键词 -->
+        <div x-show="stage === 1" class="bg-gray-800 rounded-xl p-6 space-y-4">
+            <h2 class="text-lg font-semibold">Step 1: 上传关键词挖掘数据</h2>
+            <p class="text-gray-400 text-sm">上传卖家精灵「关键词挖掘」导出的 Excel 文件（可多选），文件名需含月份如 202501</p>
+            <div class="flex gap-3">
+                <input type="file" id="kwFile" accept=".xlsx,.xls" multiple
+                       class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white file:text-sm file:cursor-pointer" />
+                <select x-model="domain" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                    <option value="US">US</option>
+                    <option value="CA">CA</option>
+                    <option value="UK">UK</option>
+                </select>
+                <button @click="uploadKeywords()" :disabled="uploading"
+                        class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm font-medium">
+                    <span x-show="!uploading">上传</span>
+                    <span x-show="uploading">处理中...</span>
+                </button>
+            </div>
+            <div x-show="kwResults.length > 0" class="space-y-1 text-sm">
+                <template x-for="r in kwResults" :key="r.file">
+                    <div :class="r.ok ? 'text-green-400' : 'text-red-400'">
+                        <span x-text="r.file"></span>
+                        <span class="text-gray-500 ml-2">→ <span x-text="r.period || '未检测到月份'"></span></span>
+                        <span class="text-gray-500 ml-1">(<span x-text="r.imported"></span> 条)</span>
+                    </div>
+                </template>
+            </div>
+            <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
+            <button x-show="kwResults.length > 0" @click="stage = 2; fetchAsins()"
+                    class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm">下一步 →</button>
+        </div>
+
+        <!-- Stage 2: 提取 ASIN -->
+        <div x-show="stage === 2" class="bg-gray-800 rounded-xl p-6 space-y-4">
+            <h2 class="text-lg font-semibold">Step 2: 去重 ASIN 提取</h2>
+            <p class="text-gray-400 text-sm">
+                已提取 <span x-text="asinTotal" class="text-white font-medium"></span> 个不重复 ASIN。
+                复制全部 → 粘贴到卖家精灵产品库 → 导出 Excel。
+            </p>
+            <div class="flex gap-2 mb-2">
+                <button @click="copyAsins()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm"
+                        x-text="copied ? '已复制' : '一键复制全部 ASIN'"></button>
+                <button @click="stage = 3" class="bg-gray-600 hover:bg-gray-500 px-4 py-1.5 rounded text-sm">
+                    已完成复制，下一步 →
+                </button>
+            </div>
+            <textarea readonly x-model="asinText" rows="8"
+                      class="w-full bg-gray-900 border border-gray-600 rounded p-3 text-xs text-gray-300 font-mono resize-none"></textarea>
+        </div>
+
+        <!-- Stage 3: 上传产品 -->
+        <div x-show="stage === 3" class="bg-gray-800 rounded-xl p-6 space-y-4">
+            <h2 class="text-lg font-semibold">Step 3: 上传产品数据</h2>
+            <p class="text-gray-400 text-sm">上传卖家精灵「产品库」导出的 Excel 文件（可多选）</p>
+            <div class="flex items-center gap-3">
+                <label class="text-sm text-gray-400">起始年月</label>
+                <input type="month" x-model="startMonth" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm" />
+            </div>
+            <div class="flex gap-3">
+                <input type="file" id="prodFile" accept=".xlsx,.xls" multiple
+                       class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-green-600 file:text-white file:text-sm file:cursor-pointer" />
+                <button @click="uploadProducts()" :disabled="uploading"
+                        class="bg-green-600 hover:bg-green-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm font-medium">
+                    <span x-show="!uploading">上传</span>
+                    <span x-show="uploading">处理中...</span>
+                </button>
+            </div>
+            <div x-show="prodResults.length > 0" class="space-y-1 text-sm">
+                <template x-for="r in prodResults" :key="r.file">
+                    <div :class="r.ok ? 'text-green-400' : 'text-red-400'">
+                        <span x-text="r.file"></span>
+                        <span class="text-gray-500 ml-2">→ 序号<span x-text="r.seq"></span> = <span x-text="r.period || '未映射'"></span></span>
+                        <span class="text-gray-500 ml-1">(<span x-text="r.imported"></span> 条)</span>
+                    </div>
+                </template>
+            </div>
+            <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
+
+            <!-- 项目命名 -->
+            <div x-show="prodOk" class="border-t border-gray-700 pt-4 mt-4 space-y-3">
+                <h3 class="text-sm font-semibold">创建项目</h3>
+                <input x-model="projectName" placeholder="项目名称（如：厨房收纳、瑜伽装备）"
+                       class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 text-sm" />
+                <textarea x-model="projectDesc" placeholder="备注（可选）" rows="2"
+                          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-sm"></textarea>
+                <button @click="createProject()" :disabled="!projectName || creating"
+                        class="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium">
+                    <span x-show="!creating">创建项目 → 进入看板</span>
+                    <span x-show="creating">创建中...</span>
+                </button>
+                <div x-show="createError" x-text="createError" class="text-red-400 text-sm text-center"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function projectCreate() {
+    return {
+        stage: 1,
+        domain: 'US',
+        kwBatchLabel: '',
+        prodBatchLabel: '',
+        uploading: false,
+        uploadMsg: '',
+        uploadOk: false,
+
+        kwResults: [],
+        prodResults: [],
+        prodOk: false,
+        startMonth: '',
+
+        asinText: '',
+        asinTotal: 0,
+        copied: false,
+
+        projectName: '',
+        projectDesc: '',
+        creating: false,
+        createError: '',
+
+        init() {
+            const w = window.innerWidth;
+            if (w < 768) {
+                setTimeout(() => { window.location.href = '/'; }, 3000);
+            }
+        },
+
+        async uploadKeywords() {
+            const fileEl = document.getElementById('kwFile');
+            const files = fileEl?.files;
+            if (!files || files.length === 0) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+            this.uploading = true; this.uploadMsg = ''; this.kwResults = [];
+            for (const file of files) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('domain', this.domain);
+                    const r = await fetch('/api/dashboard/upload/keywords', { method: 'POST', body: fd });
+                    const d = await r.json();
+                    if (d.success) {
+                        this.kwBatchLabel = d.batch_label;
+                        this.kwResults.push({ file: file.name, ok: true, period: d.data_period || '?', imported: d.keyword_count });
+                    } else {
+                        this.kwResults.push({ file: file.name, ok: false, period: '', imported: 0 });
+                        this.uploadMsg = d.error || '上传失败';
+                    }
+                } catch (e) {
+                    this.kwResults.push({ file: file.name, ok: false, period: '', imported: 0 });
+                    this.uploadMsg = '网络错误: ' + e.message;
+                }
+            }
+            this.uploading = false;
+            this.uploadOk = this.kwResults.some(r => r.ok);
+            if (this.uploadOk) this.uploadMsg = `成功导入 ${this.kwResults.filter(r => r.ok).length}/${this.kwResults.length} 个文件`;
+        },
+
+        async fetchAsins() {
+            try {
+                const r = await fetch(`/api/dashboard/asins?keyword_batch_label=${encodeURIComponent(this.kwBatchLabel)}&domain=${this.domain}`);
+                const d = await r.json();
+                this.asinText = d.asins.join('\n');
+                this.asinTotal = d.count;
+            } catch (e) {
+                this.uploadMsg = '获取 ASIN 列表失败';
+            }
+        },
+
+        copyAsins() {
+            navigator.clipboard.writeText(this.asinText).then(() => { this.copied = true; setTimeout(() => this.copied = false, 2000); });
+        },
+
+        async uploadProducts() {
+            const fileEl = document.getElementById('prodFile');
+            const files = fileEl?.files;
+            if (!files || files.length === 0) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+            this.uploading = true; this.uploadMsg = ''; this.prodResults = [];
+            for (const file of files) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('domain', this.domain);
+                    fd.append('start_month', this.startMonth);
+                    const r = await fetch('/api/dashboard/upload/products', { method: 'POST', body: fd });
+                    const d = await r.json();
+                    if (d.success) {
+                        this.prodBatchLabel = d.batch_label;
+                        this.prodResults.push({ file: file.name, ok: true, seq: d.sequence || 0, period: d.data_period || '?', imported: d.product_count });
+                        this.prodOk = true;
+                    } else {
+                        this.prodResults.push({ file: file.name, ok: false, seq: 0, period: '', imported: 0 });
+                        this.uploadMsg = d.error || '上传失败';
+                    }
+                } catch (e) {
+                    this.prodResults.push({ file: file.name, ok: false, seq: 0, period: '', imported: 0 });
+                    this.uploadMsg = '网络错误: ' + e.message;
+                }
+            }
+            this.uploading = false;
+            this.uploadOk = this.prodResults.some(r => r.ok);
+            if (this.uploadOk) this.uploadMsg = `成功导入 ${this.prodResults.filter(r => r.ok).length}/${this.prodResults.length} 个文件`;
+        },
+
+        async createProject() {
+            this.creating = true; this.createError = '';
+            try {
+                const r = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.projectName,
+                        description: this.projectDesc,
+                        domain: this.domain,
+                        keyword_batch_label: this.kwBatchLabel,
+                        product_batch_label: this.prodBatchLabel,
+                    }),
+                });
+                const d = await r.json();
+                if (d.id) {
+                    window.location.href = `/projects/${d.id}`;
+                } else {
+                    this.createError = d.error || '创建失败';
+                }
+            } catch (e) {
+                this.createError = '网络错误: ' + e.message;
+            }
+            this.creating = false;
+        },
+    };
+}
+</script>
+
+{% endblock %}

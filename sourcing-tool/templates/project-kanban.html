@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div x-data="kanban" x-init="init({{ project_id }})" class="space-y-5">
+
+    <!-- 面包屑 -->
+    <div class="flex items-center gap-2 text-sm text-gray-500">
+        <a href="/" class="hover:text-gray-300">项目列表</a>
+        <span>›</span>
+        <span class="text-white" x-text="project.name || '加载中...'"></span>
+        <span class="text-gray-600 ml-2 text-xs" x-text="project.domain"></span>
+    </div>
+
+    <!-- ═══════════ 趋势图表区 ═══════════ -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- 关键词流量 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-2">关键词流量趋势</h3>
+            <div class="flex items-baseline gap-2 mb-1">
+                <span class="text-2xl font-bold text-blue-400" x-text="fmtNum(latestTraffic)"></span>
+                <span class="text-xs" :class="trafficYoy >= 0 ? 'text-green-400' : 'text-red-400'"
+                      x-text="(trafficYoy >= 0 ? '+' : '') + (trafficYoy != null ? trafficYoy + '%' : 'N/A')"></span>
+                <span class="text-xs text-gray-500">同比</span>
+            </div>
+            <div id="chartTraffic" style="height:200px; width:100%;"></div>
+        </div>
+
+        <!-- 平均 CPC -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-2">平均 CPC 趋势</h3>
+            <div class="flex items-baseline gap-2 mb-1">
+                <span class="text-2xl font-bold text-yellow-400" x-text="'$' + latestCpc"></span>
+                <span class="text-xs" :class="cpcYoy >= 0 ? 'text-green-400' : 'text-red-400'"
+                      x-text="(cpcYoy >= 0 ? '+' : '') + (cpcYoy != null ? cpcYoy + '%' : 'N/A')"></span>
+                <span class="text-xs text-gray-500">同比</span>
+            </div>
+            <div id="chartCpc" style="height:200px; width:100%;"></div>
+        </div>
+
+        <!-- 平均 CPA -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-2">平均 CPA 趋势</h3>
+            <div class="text-xs text-gray-500 mb-1">CPA = CPC / (购买量/点击量)</div>
+            <div class="flex items-baseline gap-2 mb-1">
+                <span class="text-2xl font-bold text-purple-400" x-text="'$' + latestCpa"></span>
+                <span class="text-xs" :class="cpaYoy >= 0 ? 'text-green-400' : 'text-red-400'"
+                      x-text="(cpaYoy >= 0 ? '+' : '') + (cpaYoy != null ? cpaYoy + '%' : 'N/A')"></span>
+                <span class="text-xs text-gray-500">同比</span>
+            </div>
+            <div id="chartCpa" style="height:200px; width:100%;"></div>
+        </div>
+
+        <!-- Top 10 产品总销量 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-2">Top10 产品总销量趋势</h3>
+            <div class="flex items-baseline gap-2 mb-1">
+                <span class="text-2xl font-bold text-green-400" x-text="fmtNum(latestTop10)"></span>
+                <span class="text-xs" :class="top10Yoy >= 0 ? 'text-green-400' : 'text-red-400'"
+                      x-text="(top10Yoy >= 0 ? '+' : '') + (top10Yoy != null ? top10Yoy + '%' : 'N/A')"></span>
+                <span class="text-xs text-gray-500">同比</span>
+            </div>
+            <div id="chartTop10" style="height:200px; width:100%;"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════ 词根筛选区 ═══════════ -->
+    <div x-show="kanbanReady" x-cloak class="space-y-4">
+        <!-- 月份选择 -->
+        <div class="bg-gray-800 rounded-xl p-3 flex items-center gap-3 text-sm">
+            <span class="text-gray-400">数据月份</span>
+            <select x-model="selectedPeriod" @change="applyFilter()" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                <option value="">全部</option>
+                <template x-for="p in periods" :key="p">
+                    <option :value="p" x-text="p"></option>
+                </template>
+            </select>
+            <span class="text-gray-500 text-xs" x-text="'(' + periods.length + ' 个月份)'"></span>
+        </div>
+
+        <!-- 词根 Chips -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 class="text-sm font-semibold">词根筛选 <span class="text-gray-500" x-text="'(' + roots.length + ' 个)'"></span></h3>
+                <div class="flex gap-1 flex-wrap">
+                    <button @click="selectAllRoots()" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">全选</button>
+                    <button @click="deselectAllRoots()" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">取消</button>
+                    <button @click="selectTopRoots(20)" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Top20</button>
+                    <button @click="selectTopRoots(50)" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Top50</button>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 max-h-48 sm:max-h-60 overflow-y-auto">
+                <template x-for="r in roots" :key="r.word">
+                    <button @click="toggleRoot(r.word)"
+                            class="chip px-2 py-0.5 rounded text-xs font-medium border whitespace-nowrap"
+                            :class="getChipClass(r.word)"
+                            x-text="r.word + ' (' + r.frequency + ')'"></button>
+                </template>
+            </div>
+            <div class="flex gap-3 text-xs text-gray-500 mt-2 flex-wrap">
+                <span><span class="inline-block w-3 h-3 rounded bg-blue-600 mr-1"></span>已选</span>
+                <span><span class="inline-block w-3 h-3 rounded border border-red-500 bg-transparent mr-1"></span>结果存在</span>
+                <span><span class="inline-block w-3 h-3 rounded bg-gray-700 mr-1"></span>不存在</span>
+            </div>
+        </div>
+
+        <!-- 统计摘要 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold mb-2">赛道概览</h3>
+            <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3 text-center">
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-blue-400" x-text="fmtNum(summary.keyword_count)"></div><div class="text-xs text-gray-400">关键词</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-green-400" x-text="fmtNum(summary.asin_count)"></div><div class="text-xs text-gray-400">ASIN</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-yellow-400" x-text="fmtNum(summary.total_sv)"></div><div class="text-xs text-gray-400">月搜索量</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-orange-400" x-text="'$' + summary.avg_cpc"></div><div class="text-xs text-gray-400">平均 CPC</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-purple-400" x-text="'$' + summary.avg_price"></div><div class="text-xs text-gray-400">平均售价</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-cyan-400" x-text="fmtNum(summary.total_monthly_sales)"></div><div class="text-xs text-gray-400">总月销</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-pink-400" x-text="'$' + fmtNum(summary.total_monthly_revenue)"></div><div class="text-xs text-gray-400">总月销额</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-white" x-text="fmtNum(summary.total_purchases)"></div><div class="text-xs text-gray-400">月购买量</div></div>
+            </div>
+        </div>
+
+        <!-- 数据表 -->
+        <div class="bg-gray-800 rounded-xl overflow-hidden">
+            <div class="flex border-b border-gray-700">
+                <button @click="activeTab = 'keywords'" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium"
+                        :class="activeTab === 'keywords' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-gray-200'">
+                    关键词 (<span x-text="summary.keyword_count"></span>)
+                </button>
+                <button @click="activeTab = 'asins'" class="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium"
+                        :class="activeTab === 'asins' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-gray-200'">
+                    ASIN (<span x-text="summary.asin_count"></span>)
+                </button>
+            </div>
+
+            <!-- 关键词表 -->
+            <div x-show="activeTab === 'keywords'" class="table-wrap" style="max-height:65vh; overflow-y:auto;">
+                <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-gray-750">
+                        <tr class="text-gray-400">
+                            <th class="px-2 sm:px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortKw('keyword')">关键词</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('search_volume')">月搜索量</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('purchases')">月购买</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('purchase_rate')">购买率%</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('cpc')">CPC</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('cpa')">CPA</th>
+                            <th class="hidden sm:table-cell px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('avg_price')">均价</th>
+                            <th class="hidden sm:table-cell px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('click_share')">点击占比</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="k in sortedKeywords" :key="k.keyword">
+                            <tr class="border-t border-gray-700 hover:bg-gray-750">
+                                <td class="px-2 sm:px-3 py-1.5 max-w-[120px] sm:max-w-xs truncate">
+                                    <span class="text-blue-300" x-text="k.keyword"></span>
+                                    <span class="text-gray-500 ml-1 hidden sm:inline" x-text="k.keyword_cn"></span>
+                                </td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right" x-text="fmtNum(k.search_volume)"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right" x-text="fmtNum(k.purchases)"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right" x-text="k.purchase_rate + '%'"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right text-yellow-400" x-text="'$' + k.cpc"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right text-purple-400" x-text="'$' + calcCpa(k)"></td>
+                                <td class="hidden sm:table-cell px-3 py-1.5 text-right" x-text="'$' + k.avg_price"></td>
+                                <td class="hidden sm:table-cell px-3 py-1.5 text-right" x-text="k.click_share + '%'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div x-show="sortedKeywords.length === 0" class="text-center text-gray-500 py-8">暂无匹配关键词</div>
+            </div>
+
+            <!-- ASIN 表 -->
+            <div x-show="activeTab === 'asins'" class="table-wrap" style="max-height:65vh; overflow-y:auto;">
+                <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-gray-750">
+                        <tr class="text-gray-400">
+                            <th class="px-2 sm:px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('asin')">ASIN</th>
+                            <th class="px-2 sm:px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('title')">标题</th>
+                            <th class="hidden sm:table-cell px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('brand')">品牌</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('price')">价格</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('monthly_sales')">月销量</th>
+                            <th class="hidden sm:table-cell px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('monthly_revenue')">月销额</th>
+                            <th class="hidden sm:table-cell px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('bsr')">BSR</th>
+                            <th class="px-2 sm:px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('ratings')">评分</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="a in sortedAsins" :key="a.asin">
+                            <tr class="border-t border-gray-700 hover:bg-gray-750">
+                                <td class="px-2 sm:px-3 py-1.5 text-green-400 font-mono text-xs" x-text="a.asin"></td>
+                                <td class="px-2 sm:px-3 py-1.5 max-w-[150px] sm:max-w-sm truncate" :title="a.title" x-text="a.title"></td>
+                                <td class="hidden sm:table-cell px-3 py-1.5 text-gray-400" x-text="a.brand"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right" x-text="'$' + a.price"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right font-medium" x-text="fmtNum(a.monthly_sales)"></td>
+                                <td class="hidden sm:table-cell px-3 py-1.5 text-right" x-text="'$' + fmtNum(a.monthly_revenue)"></td>
+                                <td class="hidden sm:table-cell px-3 py-1.5 text-right text-gray-400" x-text="fmtNum(a.bsr)"></td>
+                                <td class="px-2 sm:px-3 py-1.5 text-right" x-text="a.ratings"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div x-show="sortedAsins.length === 0" class="text-center text-gray-500 py-8">暂无匹配 ASIN</div>
+            </div>
+        </div>
+
+        <!-- 保存赛道 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold mb-3">保存赛道</h3>
+            <div class="flex gap-2 mb-4">
+                <input x-model="nicheName" placeholder="赛道名称" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-40 sm:w-48" />
+                <button @click="saveNiche()" :disabled="!nicheName || activeRoots.size === 0"
+                        class="bg-green-600 hover:bg-green-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm">保存</button>
+            </div>
+            <template x-if="niches.length > 0">
+                <div>
+                    <h4 class="text-xs text-gray-500 mb-2">已保存赛道</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="n in niches" :key="n.id">
+                            <div class="bg-gray-700 rounded-lg px-3 py-2 text-xs flex items-center gap-2">
+                                <button @click="loadNiche(n)" class="hover:text-blue-400" x-text="n.name"></button>
+                                <span class="text-gray-500" x-text="'(' + n.keyword_count + '词/' + n.asin_count + '品)'"></span>
+                                <button @click="deleteNiche(n.id)" class="text-red-400 hover:text-red-300 ml-1">&times;</button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function kanban() {
+    return {
+        projectId: 0,
+        project: {},
+        kanbanReady: false,
+
+        // Trends
+        periods: [],
+        trends: null,
+        latestTraffic: 0, trafficYoy: null,
+        latestCpc: 0, cpcYoy: null,
+        latestCpa: 0, cpaYoy: null,
+        latestTop10: 0, top10Yoy: null,
+        charts: {},
+
+        // Word roots
+        roots: [],
+        activeRoots: new Set(),
+        hintRoots: new Set(),
+
+        // Filter results
+        selectedPeriod: '',
+        keywords: [],
+        asins: [],
+        summary: { keyword_count: 0, asin_count: 0, total_sv: 0, total_purchases: 0, avg_cpc: 0, avg_price: 0, total_monthly_sales: 0, total_monthly_revenue: 0 },
+
+        // Tables
+        activeTab: 'keywords',
+        kwSort: { col: 'search_volume', asc: false },
+        asinSort: { col: 'monthly_sales', asc: false },
+
+        // Niches
+        nicheName: '',
+        niches: [],
+
+        async init(pid) {
+            this.projectId = pid;
+            // Load kanban base data
+            try {
+                const r = await fetch(`/api/projects/${pid}/kanban`);
+                const d = await r.json();
+                if (d.project) {
+                    this.project = d.project;
+                    this.roots = d.roots || [];
+                    this.periods = d.periods || [];
+                }
+            } catch (e) { console.error(e); }
+
+            await this.loadNiches();
+            await this.applyFilter();
+            await this.loadTrends();
+            this.kanbanReady = true;
+
+            // Watch resize for charts
+            window.addEventListener('resize', () => this.resizeCharts());
+        },
+
+        // ── ECharts ──
+        async loadTrends() {
+            try {
+                const r = await fetch(`/api/projects/${this.projectId}/trends`);
+                this.trends = await r.json();
+                if (this.trends.periods) {
+                    this.periods = this.trends.periods;
+                    this.renderCharts();
+                }
+            } catch (e) { console.error(e); }
+        },
+
+        renderCharts() {
+            const t = this.trends;
+            if (!t || !t.periods) return;
+            const pd = t.periods;
+
+            const last = (arr) => arr.length > 0 ? arr[arr.length - 1] : 0;
+            const lastYoY = (arr) => arr.length > 0 ? arr[arr.length - 1] : null;
+
+            this.latestTraffic = last(t.traffic.current);
+            this.trafficYoy = lastYoY(t.traffic.yoy_growth);
+            this.latestCpc = last(t.avg_cpc.current);
+            this.cpcYoy = lastYoY(t.avg_cpc.yoy_growth);
+            this.latestCpa = last(t.avg_cpa.current);
+            this.cpaYoy = lastYoY(t.avg_cpa.yoy_growth);
+            this.latestTop10 = last(t.top10_sales.current);
+            this.top10Yoy = lastYoY(t.top10_sales.yoy_growth);
+
+            this.$nextTick(() => {
+                this.makeChart('chartTraffic', pd, t.traffic.current, '月搜索量', '#3b82f6');
+                this.makeChart('chartCpc', pd, t.avg_cpc.current, 'CPC ($)', '#eab308');
+                this.makeChart('chartCpa', pd, t.avg_cpa.current, 'CPA ($)', '#a855f7');
+                this.makeChart('chartTop10', pd, t.top10_sales.current, '月销量', '#22c55e');
+            });
+        },
+
+        makeChart(domId, periods, data, label, color) {
+            const el = document.getElementById(domId);
+            if (!el) return;
+            if (this.charts[domId]) this.charts[domId].dispose();
+            const chart = echarts.init(el);
+            this.charts[domId] = chart;
+            chart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: 50, right: 16, top: 10, bottom: 24 },
+                xAxis: { type: 'category', data: periods, axisLabel: { color: '#9ca3af', fontSize: 10, rotate: 45 } },
+                yAxis: { type: 'value', axisLabel: { color: '#9ca3af', fontSize: 10, formatter: v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v } },
+                series: [{
+                    name: label, type: 'line', data: data,
+                    smooth: true, symbol: 'circle', symbolSize: 4,
+                    lineStyle: { color, width: 2 },
+                    itemStyle: { color },
+                    areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,
+                        [{offset:0, color: color+'40'}, {offset:1, color: color+'05'}]) },
+                }],
+            });
+        },
+
+        resizeCharts() {
+            Object.values(this.charts).forEach(c => { try { c.resize(); } catch(e) {} });
+        },
+
+        // ── Filter ──
+        async applyFilter() {
+            try {
+                const r = await fetch(`/api/projects/${this.projectId}/filter`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        root_words: [...this.activeRoots],
+                        data_period: this.selectedPeriod,
+                    }),
+                });
+                const d = await r.json();
+                this.keywords = d.keywords || [];
+                this.asins = d.asins || [];
+                this.summary = d.summary || { keyword_count:0,asin_count:0,total_sv:0,total_purchases:0,avg_cpc:0,avg_price:0,total_monthly_sales:0,total_monthly_revenue:0 };
+                this.updateHintRoots();
+            } catch (e) { console.error(e); }
+        },
+
+        updateHintRoots() {
+            this.hintRoots = new Set();
+            const allWords = new Set();
+            for (const k of this.keywords) {
+                const words = k.keyword.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2);
+                words.forEach(w => allWords.add(w));
+            }
+            for (const r of this.roots) {
+                if (!this.activeRoots.has(r.word) && allWords.has(r.word)) {
+                    this.hintRoots.add(r.word);
+                }
+            }
+        },
+
+        toggleRoot(word) {
+            if (this.activeRoots.has(word)) { this.activeRoots.delete(word); }
+            else { this.activeRoots.add(word); }
+            this.applyFilter();
+        },
+
+        getChipClass(word) {
+            if (this.activeRoots.has(word)) return 'bg-blue-600 text-white border-blue-500';
+            if (this.hintRoots.has(word)) return 'bg-transparent text-red-400 border-red-500';
+            return 'bg-gray-700 text-gray-500 border-gray-600';
+        },
+
+        selectAllRoots() { this.roots.forEach(r => this.activeRoots.add(r.word)); this.applyFilter(); },
+        deselectAllRoots() { this.activeRoots = new Set(); this.applyFilter(); },
+        selectTopRoots(n) {
+            this.activeRoots = new Set();
+            this.roots.slice(0, n).forEach(r => this.activeRoots.add(r.word));
+            this.applyFilter();
+        },
+
+        // ── Sort ──
+        sortKw(col) {
+            if (this.kwSort.col === col) this.kwSort.asc = !this.kwSort.asc;
+            else { this.kwSort.col = col; this.kwSort.asc = false; }
+        },
+        get sortedKeywords() {
+            const arr = [...this.keywords].map(k => ({ ...k, cpa: this.calcCpa(k) }));
+            const col = this.kwSort.col === 'cpa' ? 'cpa' : this.kwSort.col;
+            arr.sort((a, b) => {
+                const va = a[col] ?? '', vb = b[col] ?? '';
+                if (typeof va === 'string') return this.kwSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.kwSort.asc ? va - vb : vb - va;
+            });
+            return arr;
+        },
+
+        sortAsin(col) {
+            if (this.asinSort.col === col) this.asinSort.asc = !this.asinSort.asc;
+            else { this.asinSort.col = col; this.asinSort.asc = false; }
+        },
+        get sortedAsins() {
+            const arr = [...this.asins];
+            const col = this.asinSort.col;
+            arr.sort((a, b) => {
+                const va = a[col] ?? '', vb = b[col] ?? '';
+                if (typeof va === 'string') return this.asinSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.asinSort.asc ? va - vb : vb - va;
+            });
+            return arr;
+        },
+
+        // ── CPA ──
+        calcCpa(k) {
+            if (k.clicks && k.purchases && k.purchases > 0) {
+                return (k.cpc / (k.purchases / k.clicks)).toFixed(2);
+            }
+            return 'N/A';
+        },
+
+        // ── Niches ──
+        async saveNiche() {
+            if (!this.nicheName) return;
+            try {
+                const r = await fetch(`/api/projects/${this.projectId}/niches`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.nicheName,
+                        keyword_batch_label: this.project.keyword_batch_label,
+                        product_batch_label: this.project.product_batch_label,
+                        root_words: [...this.activeRoots],
+                        domain: this.project.domain,
+                        keyword_count: this.summary.keyword_count,
+                        asin_count: this.summary.asin_count,
+                        stats_snapshot: this.summary,
+                    }),
+                });
+                const d = await r.json();
+                if (d.id) { this.nicheName = ''; await this.loadNiches(); }
+            } catch (e) { console.error(e); }
+        },
+
+        async loadNiches() {
+            try {
+                const r = await fetch(`/api/projects/${this.projectId}/niches`);
+                const d = await r.json();
+                this.niches = d.niches || [];
+            } catch (e) { /* ignore */ }
+        },
+
+        async loadNiche(n) {
+            this.activeRoots = new Set(n.root_words);
+            await this.applyFilter();
+        },
+
+        async deleteNiche(id) {
+            if (!confirm('删除此赛道？')) return;
+            try {
+                await fetch(`/api/projects/${this.projectId}/niches/${id}`, { method: 'DELETE' });
+                await this.loadNiches();
+            } catch (e) { console.error(e); }
+        },
+
+        // ── Helpers ──
+        fmtNum(v) {
+            if (v == null || v === 0) return '0';
+            if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+            if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+            if (Number.isInteger(v)) return v.toLocaleString();
+            return v.toFixed(1);
+        },
+    };
+}
+</script>
+
+{% endblock %}

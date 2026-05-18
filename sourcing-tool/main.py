@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.routes import router
 from app.models import init_db
+from app.auth import AuthMiddleware
 
 
 @asynccontextmanager
@@ -17,9 +18,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="亚马逊选品 SOP 自动化工具",
     description="ABA报表 → 清洗过滤 → Sorftime补数据 → 候选清单",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(AuthMiddleware)
 
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")

@@ -318,6 +318,7 @@ class SellerspriteKeyword(Base):
     search_volume = Column(Integer)               # 近90天搜索量
     sales_volume_90d = Column(Integer)            # 近90天销量
     purchases_90d = Column(Integer)               # 近90天购买量
+    clicks = Column(Integer)                      # 月点击量（关键词挖掘 Excel）
     search_conversion_rate = Column(Float)        # 搜索转化率 %
     click_conversion_rate = Column(Float)         # 销量转化率 %
 
@@ -474,6 +475,7 @@ class NicheTrack(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
+    project_id = Column(Integer, index=True)
     keyword_batch_label = Column(String, nullable=False, index=True)
     product_batch_label = Column(String)
     domain = Column(String, nullable=False, default="US")
@@ -484,17 +486,37 @@ class NicheTrack(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+# ── 项目表 ──────────────────────────────────────
+class Project(Base):
+    """宏观垂直赛道项目，关联关键词/产品批次。"""
+    __tablename__ = "project"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    domain = Column(String, nullable=False, default="US")
+    keyword_batch_label = Column(String, index=True)
+    product_batch_label = Column(String)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def init_db():
     try:
         Base.metadata.create_all(engine)
     except Exception as e:
         print(f"[init_db] WARNING: Could not create tables: {e}", file=sys.stderr)
-    # Add data_period column to existing tables (safe migration)
+    # Safe column migrations
+    _migrations = [
+        ("sellersprite_keyword", "data_period", "VARCHAR(7)"),
+        ("sellersprite_product", "data_period", "VARCHAR(7)"),
+        ("sellersprite_keyword", "clicks", "INTEGER"),
+        ("niche_track", "project_id", "INTEGER"),
+    ]
     try:
         with engine.connect() as conn:
-            for table in ("sellersprite_keyword", "sellersprite_product"):
+            for table, col, col_type in _migrations:
                 try:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN data_period VARCHAR(7)"))
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
                     conn.commit()
                 except Exception:
                     pass  # column already exists

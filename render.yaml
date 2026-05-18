@@ -10,6 +10,9 @@ services:
         fromDatabase:
           name: sourcing-db
           property: connectionString
+      - key: APP_PASSWORD
+        sync: false
+        value: "changeme"
     autoDeploy: true
 
 databases:

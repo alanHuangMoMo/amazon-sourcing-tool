@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>亚马逊选品 SOP 自动化工具</title>
+    <title>亚马逊选品工具</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
@@ -11,19 +11,27 @@
     <style>
         .skeleton { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        [x-cloak] { display: none !important; }
+        .bg-gray-750 { background-color: #1f2937; }
+        tr:hover td { background-color: rgba(55, 65, 81, 0.5); }
+        /* Mobile table scroll */
+        @media (max-width: 639px) {
+            .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
-    <nav class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center gap-4">
-        <a href="/" class="text-lg font-bold text-blue-400 hover:text-blue-300">选品 SOP</a>
-        <span class="text-gray-600">|</span>
-        <a href="/" class="text-sm text-gray-400 hover:text-gray-200">上传</a>
-        <a href="/aba" class="text-sm text-gray-400 hover:text-gray-200">ABA导入</a>
-        <a href="/batches" class="text-sm text-gray-400 hover:text-gray-200">历史</a>
-        <a href="/dashboard" class="text-sm text-gray-400 hover:text-gray-200">词根赛道</a>
+    <nav class="bg-gray-800 border-b border-gray-700 px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-4">
+        <a href="/" class="text-base sm:text-lg font-bold text-blue-400 hover:text-blue-300 whitespace-nowrap">选品工具</a>
+        <span class="text-gray-600 hidden sm:inline">|</span>
+        <a href="/" class="text-xs sm:text-sm text-gray-400 hover:text-gray-200 whitespace-nowrap">项目列表</a>
+        <a href="/projects/new" class="text-xs sm:text-sm text-gray-400 hover:text-gray-200 whitespace-nowrap hidden sm:inline">新建项目</a>
+        <span class="flex-1"></span>
+        <a href="/api/auth/logout" class="text-xs text-gray-500 hover:text-red-400 whitespace-nowrap">退出</a>
     </nav>
-    <main class="max-w-7xl mx-auto p-6">
+    <main class="max-w-7xl mx-auto p-3 sm:p-6">
         {% block content %}{% endblock %}
     </main>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

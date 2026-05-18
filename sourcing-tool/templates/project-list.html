@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div x-data="projectList" x-init="fetchProjects()" class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl sm:text-2xl font-bold">项目列表</h1>
+        <a href="/projects/new"
+           class="hidden sm:inline-flex bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            + 新建项目
+        </a>
+    </div>
+
+    <!-- 空状态 -->
+    <div x-show="!loading && projects.length === 0" class="text-center py-20">
+        <p class="text-gray-500 text-lg mb-4">还没有项目</p>
+        <a href="/projects/new"
+           class="inline-flex bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-medium transition-colors">
+            创建第一个项目
+        </a>
+        <p class="text-gray-600 text-xs mt-3">上传关键词挖掘数据 + 产品数据，开始赛道分析</p>
+    </div>
+
+    <!-- 加载中 -->
+    <div x-show="loading" class="text-center py-12 text-gray-500">加载中...</div>
+
+    <!-- 项目卡片网格 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <template x-for="p in projects" :key="p.id">
+            <a :href="'/projects/' + p.id"
+               class="bg-gray-800 rounded-xl p-5 border border-gray-700 hover:border-blue-500 transition-colors block group">
+                <div class="flex items-start justify-between mb-3">
+                    <h2 class="text-lg font-semibold text-white group-hover:text-blue-400 truncate" x-text="p.name"></h2>
+                    <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-400 whitespace-nowrap ml-2" x-text="p.domain"></span>
+                </div>
+                <p class="text-gray-500 text-sm mb-4 line-clamp-2" x-show="p.description" x-text="p.description"></p>
+                <div class="grid grid-cols-2 gap-3 text-center">
+                    <div class="bg-gray-750 rounded-lg py-2">
+                        <div class="text-xl font-bold text-blue-400" x-text="fmtNum(p.keyword_count)"></div>
+                        <div class="text-xs text-gray-500">关键词</div>
+                    </div>
+                    <div class="bg-gray-750 rounded-lg py-2">
+                        <div class="text-xl font-bold text-green-400" x-text="fmtNum(p.product_count)"></div>
+                        <div class="text-xs text-gray-500">产品</div>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-600 mt-3" x-text="'创建于 ' + (p.created_at || '').slice(0, 10)"></div>
+            </a>
+        </template>
+    </div>
+</div>
+
+<script>
+function projectList() {
+    return {
+        projects: [],
+        loading: true,
+
+        async fetchProjects() {
+            try {
+                const r = await fetch('/api/projects');
+                const d = await r.json();
+                this.projects = d.projects || [];
+            } catch (e) {
+                console.error(e);
+            }
+            this.loading = false;
+        },
+
+        fmtNum(v) {
+            if (v == null || v === 0) return '0';
+            if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+            if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+            return v.toLocaleString();
+        },
+    };
+}
+</script>
+
+{% endblock %}
