@@ -1099,7 +1099,7 @@ async def dashboard_upload_keywords(file: UploadFile = File(...), domain: str = 
         if not kw_records:
             return {"error": "解析结果为空，请检查文件格式"}
         batch_label = f"{file.filename.rsplit('.', 1)[0]}-{os.urandom(2).hex()}"
-        kw_count = import_keyword_mining_to_db(kw_records, domain, batch_label, data_period)
+        result = import_keyword_mining_to_db(kw_records, domain, batch_label, data_period)
 
         uw_records = parse_unique_words(str(filepath))
         uw_count = import_unique_words_to_db(uw_records, domain, batch_label) if uw_records else 0
@@ -1107,7 +1107,8 @@ async def dashboard_upload_keywords(file: UploadFile = File(...), domain: str = 
         return {
             "success": True,
             "batch_label": batch_label,
-            "keyword_count": kw_count,
+            "keyword_count": result["count"],
+            "parse_errors": result.get("errors", []),
             "word_root_count": uw_count,
             "domain": domain,
             "data_period": data_period,

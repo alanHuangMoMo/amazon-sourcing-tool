@@ -116,13 +116,16 @@ def parse_unique_words(filepath: str) -> list[dict]:
     return records
 
 
-def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: str, data_period: str = "") -> int:
-    """批量写入关键词挖掘数据到 sellersprite_keyword 表。"""
+def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: str, data_period: str = "") -> dict:
+    """批量写入关键词挖掘数据到 sellersprite_keyword 表。
+    返回 {"count": N, "errors": [first_error, ...]}。
+    """
     from datetime import datetime, timezone
 
     db = SessionLocal()
     try:
         count = 0
+        errors = []
         now = datetime.now(timezone.utc)
 
         for r in records:
@@ -159,11 +162,12 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
                     queried_at=now,
                 ))
                 count += 1
-            except Exception:
-                continue
+            except Exception as e:
+                if len(errors) < 3:
+                    errors.append(f"{r.get('keyword','?')}: {e}")
 
         db.commit()
-        return count
+        return {"count": count, "errors": errors}
     finally:
         db.close()
 
