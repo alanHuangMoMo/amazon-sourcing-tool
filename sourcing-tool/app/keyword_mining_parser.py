@@ -3,9 +3,20 @@
 与 sellersprite_import.py（KCR 格式）互补，专门处理关键词挖掘导出格式。
 """
 import json
+import re
 import pandas as pd
 
 from .models import SessionLocal, SellerspriteKeyword, WordRoot
+
+
+def extract_period_from_filename(filename: str) -> str:
+    """从关键词挖掘文件名提取数据月份。
+    KeywordMining-US-custom-202403-357091 → "2024-03"
+    """
+    m = re.search(r'(\d{4})(\d{2})-', filename)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    return ""
 
 
 def parse_keyword_mining(filepath: str) -> list[dict]:
@@ -105,7 +116,7 @@ def parse_unique_words(filepath: str) -> list[dict]:
     return records
 
 
-def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: str) -> int:
+def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: str, data_period: str = "") -> int:
     """批量写入关键词挖掘数据到 sellersprite_keyword 表。"""
     from datetime import datetime, timezone
 
@@ -116,10 +127,11 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
 
         for r in records:
             try:
-                # 删旧插新（同 keyword + domain）
+                # 删旧插新（同 keyword + domain + period）
                 existing = db.query(SellerspriteKeyword).filter(
                     SellerspriteKeyword.keyword == r["keyword"],
                     SellerspriteKeyword.domain == domain,
+                    SellerspriteKeyword.data_period == data_period,
                 ).first()
                 if existing:
                     db.delete(existing)
@@ -130,6 +142,7 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
                     keyword_cn=r.get("keyword_cn", ""),
                     domain=domain,
                     batch_id=batch_label,
+                    data_period=data_period,
                     search_volume=r.get("search_volume", 0),
                     purchases_90d=r.get("purchases", 0),
                     search_conversion_rate=r.get("purchase_rate", 0) * 100,

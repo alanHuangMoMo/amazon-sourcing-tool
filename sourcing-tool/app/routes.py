@@ -1025,8 +1025,8 @@ async def dashboard_page(request: Request):
 
 @router.post("/api/dashboard/upload/keywords")
 async def dashboard_upload_keywords(file: UploadFile = File(...), domain: str = Form("US")):
-    """上传关键词挖掘 Excel，解析入库。"""
-    from .keyword_mining_parser import parse_keyword_mining, parse_unique_words, import_keyword_mining_to_db, import_unique_words_to_db
+    """上传关键词挖掘 Excel，解析入库。自动从文件名提取数据月份。"""
+    from .keyword_mining_parser import parse_keyword_mining, parse_unique_words, import_keyword_mining_to_db, import_unique_words_to_db, extract_period_from_filename
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ("xlsx", "xls"):
@@ -1036,11 +1036,12 @@ async def dashboard_upload_keywords(file: UploadFile = File(...), domain: str = 
     filepath.write_bytes(await file.read())
 
     try:
+        data_period = extract_period_from_filename(file.filename)
         kw_records = parse_keyword_mining(str(filepath))
         if not kw_records:
             return {"error": "解析结果为空，请检查文件格式"}
         batch_label = f"{file.filename.rsplit('.', 1)[0]}-{os.urandom(2).hex()}"
-        kw_count = import_keyword_mining_to_db(kw_records, domain, batch_label)
+        kw_count = import_keyword_mining_to_db(kw_records, domain, batch_label, data_period)
 
         uw_records = parse_unique_words(str(filepath))
         uw_count = import_unique_words_to_db(uw_records, domain, batch_label) if uw_records else 0
@@ -1051,15 +1052,16 @@ async def dashboard_upload_keywords(file: UploadFile = File(...), domain: str = 
             "keyword_count": kw_count,
             "word_root_count": uw_count,
             "domain": domain,
+            "data_period": data_period,
         }
     except Exception as e:
         return {"error": str(e)}
 
 
 @router.post("/api/dashboard/upload/products")
-async def dashboard_upload_products(file: UploadFile = File(...), domain: str = Form("US")):
-    """上传产品库导出 Excel，解析入库。"""
-    from .sellersprite_import import parse_product_excel, import_product_to_db
+async def dashboard_upload_products(file: UploadFile = File(...), domain: str = Form("US"), start_month: str = Form("")):
+    """上传产品库导出 Excel，解析入库。按文件名序号 + 起始月计算 data_period。"""
+    from .sellersprite_import import parse_product_excel, import_product_to_db, parse_product_sequence, compute_period
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ("xlsx", "xls"):
@@ -1072,14 +1074,18 @@ async def dashboard_upload_products(file: UploadFile = File(...), domain: str = 
         records = parse_product_excel(str(filepath))
         if not records:
             return {"error": "解析结果为空，请检查文件格式"}
+        seq = parse_product_sequence(file.filename)
+        data_period = compute_period(start_month, seq) if start_month else ""
         batch_label = f"{file.filename.rsplit('.', 1)[0]}-{os.urandom(2).hex()}"
-        count = import_product_to_db(records, domain, batch_label)
+        count = import_product_to_db(records, domain, batch_label, data_period=data_period)
 
         return {
             "success": True,
             "batch_label": batch_label,
             "product_count": count,
             "domain": domain,
+            "data_period": data_period,
+            "sequence": seq,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -1143,21 +1149,41 @@ async def dashboard_asins(keyword_batch_label: str = Query(...), domain: str = Q
         db.close()
 
 
+@router.get("/api/dashboard/periods")
+async def dashboard_periods(domain: str = Query("US")):
+    """获取所有已导入数据的月份列表。"""
+    db = SessionLocal()
+    try:
+        kw_periods = db.query(SellerspriteKeyword.data_period).filter(
+            SellerspriteKeyword.domain == domain,
+            SellerspriteKeyword.data_period != "",
+        ).distinct().all()
+        prod_periods = db.query(SellerspriteProduct.data_period).filter(
+            SellerspriteProduct.domain == domain,
+            SellerspriteProduct.data_period != "",
+        ).distinct().all()
+        all_periods = sorted(set(p[0] for p in kw_periods + prod_periods if p[0]))
+        return {"periods": all_periods}
+    finally:
+        db.close()
+
+
 @router.post("/api/dashboard/filter")
 async def dashboard_filter(body: dict):
-    """按词根组合筛选关键词和 ASIN。"""
-    keyword_batch_label = body.get("keyword_batch_label", "")
-    product_batch_label = body.get("product_batch_label", "")
-    root_words = body.get("root_words", [])
+    """按词根组合筛选关键词和 ASIN。可选按 data_period 过滤。"""
     domain = body.get("domain", "US")
+    root_words = body.get("root_words", [])
+    data_period = body.get("data_period", "")
 
     db = SessionLocal()
     try:
-        # 加载关键词
-        kw_rows = db.query(SellerspriteKeyword).filter(
-            SellerspriteKeyword.batch_id == keyword_batch_label,
+        # 加载关键词（按period过滤或全部）
+        kw_query = db.query(SellerspriteKeyword).filter(
             SellerspriteKeyword.domain == domain,
-        ).all()
+        )
+        if data_period:
+            kw_query = kw_query.filter(SellerspriteKeyword.data_period == data_period)
+        kw_rows = kw_query.all()
 
         # 词根交集筛选
         stop_words = _get_stop_words()
@@ -1181,10 +1207,13 @@ async def dashboard_filter(body: dict):
 
         products = {}
         if matched_asins_set:
-            prod_rows = db.query(SellerspriteProduct).filter(
+            prod_query = db.query(SellerspriteProduct).filter(
                 SellerspriteProduct.domain == domain,
                 SellerspriteProduct.asin.in_(matched_asins_set),
-            ).all()
+            )
+            if data_period:
+                prod_query = prod_query.filter(SellerspriteProduct.data_period == data_period)
+            prod_rows = prod_query.all()
             products = {p.asin: p for p in prod_rows}
 
         # 构建关键词级数据
@@ -1242,7 +1271,16 @@ async def dashboard_filter(body: dict):
             "total_monthly_revenue": round(sum(a["monthly_revenue"] for a in asin_data), 2),
         }
 
-        return {"keywords": kw_data, "asins": asin_data, "summary": summary}
+        # 可用月份
+        kw_periods = db.query(SellerspriteKeyword.data_period).filter(
+            SellerspriteKeyword.domain == domain, SellerspriteKeyword.data_period != ""
+        ).distinct().all()
+        prod_periods = db.query(SellerspriteProduct.data_period).filter(
+            SellerspriteProduct.domain == domain, SellerspriteProduct.data_period != ""
+        ).distinct().all()
+        all_periods = sorted(set(p[0] for p in kw_periods + prod_periods if p[0]))
+
+        return {"keywords": kw_data, "asins": asin_data, "summary": summary, "periods": all_periods}
     finally:
         db.close()
 

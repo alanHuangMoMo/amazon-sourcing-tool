@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, Float, String, Text, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, Float, String, Text, DateTime, Boolean, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from datetime import datetime, timezone
 import os
@@ -313,6 +313,7 @@ class SellerspriteKeyword(Base):
     keyword_cn = Column(String)
     domain = Column(String, nullable=False, default="US")
     batch_id = Column(String, index=True)
+    data_period = Column(String(7))              # "YYYY-MM" 数据所属月份
 
     search_volume = Column(Integer)               # 近90天搜索量
     sales_volume_90d = Column(Integer)            # 近90天销量
@@ -358,6 +359,7 @@ class SellerspriteProduct(Base):
     asin = Column(String, nullable=False, index=True)
     domain = Column(String, nullable=False, default="US")
     batch_id = Column(String, index=True)
+    data_period = Column(String(7))              # "YYYY-MM" 数据所属月份
 
     sku = Column(Text)
     title = Column(Text)
@@ -487,7 +489,17 @@ def init_db():
         Base.metadata.create_all(engine)
     except Exception as e:
         print(f"[init_db] WARNING: Could not create tables: {e}", file=sys.stderr)
-        # Don't crash — app can still serve pages, DB operations will fail gracefully
+    # Add data_period column to existing tables (safe migration)
+    try:
+        with engine.connect() as conn:
+            for table in ("sellersprite_keyword", "sellersprite_product"):
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN data_period VARCHAR(7)"))
+                    conn.commit()
+                except Exception:
+                    pass  # column already exists
+    except Exception:
+        pass
 
 
 def get_db():

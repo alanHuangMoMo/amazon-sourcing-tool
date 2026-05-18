@@ -21,9 +21,10 @@
     <!-- ═══════════ Stage 1: 装关键词数据 ═══════════ -->
     <div x-show="stage === 'upload_kw'" class="bg-gray-800 rounded-xl p-6 space-y-4 max-w-xl">
         <h2 class="text-xl font-semibold">Step 1: 装载关键词历史数据</h2>
-        <p class="text-gray-400 text-sm">上传卖家精灵「关键词挖掘」导出的 Excel 文件</p>
+        <p class="text-gray-400 text-sm">上传卖家精灵「关键词挖掘」导出的 Excel 文件（可多选）</p>
         <div class="flex gap-3">
-            <input type="file" id="kwFile" accept=".xlsx,.xls" class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white file:text-sm file:cursor-pointer" />
+            <input type="file" id="kwFile" accept=".xlsx,.xls" multiple
+                   class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white file:text-sm file:cursor-pointer" />
             <select x-model="domain" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
                 <option value="US">US</option>
                 <option value="CA">CA</option>
@@ -35,7 +36,18 @@
                 <span x-show="uploading">处理中...</span>
             </button>
         </div>
+        <div x-show="kwResults.length > 0" class="space-y-1 text-sm">
+            <template x-for="r in kwResults" :key="r.file">
+                <div :class="r.ok ? 'text-green-400' : 'text-red-400'">
+                    <span x-text="r.file"></span>
+                    <span class="text-gray-500 ml-2">→ <span x-text="r.period || '未检测到月份'"></span></span>
+                    <span class="text-gray-500 ml-1">(<span x-text="r.imported"></span> 条)</span>
+                </div>
+            </template>
+        </div>
         <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
+        <button x-show="kwResults.length > 0" @click="proceedToAsins()"
+                class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm">下一步 →</button>
     </div>
 
     <!-- ═══════════ Stage 2: 提取 ASIN ═══════════ -->
@@ -59,22 +71,48 @@
     <!-- ═══════════ Stage 3: 装 ASIN 数据 ═══════════ -->
     <div x-show="stage === 'upload_prod'" class="bg-gray-800 rounded-xl p-6 space-y-4 max-w-xl">
         <h2 class="text-xl font-semibold">Step 3: 装载 ASIN 历史数据</h2>
-        <p class="text-gray-400 text-sm">上传卖家精灵「产品库」导出的 Excel 文件</p>
+        <p class="text-gray-400 text-sm">上传卖家精灵「产品库」导出的 Excel 文件（可多选）</p>
+        <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-400">起始年月</label>
+            <input type="month" x-model="startMonth" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm" />
+        </div>
         <div class="flex gap-3">
-            <input type="file" id="prodFile" accept=".xlsx,.xls" class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-green-600 file:text-white file:text-sm file:cursor-pointer" />
+            <input type="file" id="prodFile" accept=".xlsx,.xls" multiple
+                   class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-green-600 file:text-white file:text-sm file:cursor-pointer" />
             <button @click="uploadProducts()" :disabled="uploading"
                     class="bg-green-600 hover:bg-green-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm font-medium">
                 <span x-show="!uploading">上传</span>
                 <span x-show="uploading">处理中...</span>
             </button>
         </div>
+        <div x-show="prodResults.length > 0" class="space-y-1 text-sm">
+            <template x-for="r in prodResults" :key="r.file">
+                <div :class="r.ok ? 'text-green-400' : 'text-red-400'">
+                    <span x-text="r.file"></span>
+                    <span class="text-gray-500 ml-2">→ 序号<span x-text="r.seq"></span> = <span x-text="r.period || '未映射'"></span></span>
+                    <span class="text-gray-500 ml-1">(<span x-text="r.imported"></span> 条)</span>
+                </div>
+            </template>
+        </div>
         <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
-        <button x-show="prodLoaded" @click="enterFilter()"
+        <button x-show="prodResults.length > 0" @click="enterFilter()"
                 class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm">进入词根看板 →</button>
     </div>
 
     <!-- ═══════════ Stage 4: 词根筛选 + 赛道看板 ═══════════ -->
     <div x-show="stage === 'filter'" x-cloak class="space-y-4">
+
+        <!-- 月份筛选 -->
+        <div class="bg-gray-800 rounded-xl p-3 flex items-center gap-3 text-sm">
+            <span class="text-gray-400">数据月份</span>
+            <select x-model="selectedPeriod" @change="applyFilter()" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                <option value="">全部</option>
+                <template x-for="p in periods" :key="p">
+                    <option :value="p" x-text="p"></option>
+                </template>
+            </select>
+            <span class="text-gray-500 text-xs" x-text="'(' + periods.length + ' 个月份)'"></span>
+        </div>
 
         <!-- 词根 Chip 区域 -->
         <div class="bg-gray-800 rounded-xl p-4">
@@ -268,6 +306,13 @@ function dashboard() {
         uploadOk: false,
         prodLoaded: false,
 
+        // Stage 1 results
+        kwResults: [],
+
+        // Stage 3 params
+        startMonth: '',
+        prodResults: [],
+
         // ASIN extraction
         asinText: '',
         asinTotal: 0,
@@ -282,6 +327,8 @@ function dashboard() {
         keywords: [],
         asins: [],
         summary: { keyword_count: 0, asin_count: 0, total_sv: 0, total_purchases: 0, avg_cpc: 0, avg_price: 0, total_monthly_sales: 0, total_monthly_revenue: 0 },
+        periods: [],
+        selectedPeriod: '',
 
         // Tables
         activeTab: 'keywords',
@@ -292,46 +339,42 @@ function dashboard() {
         nicheName: '',
         niches: [],
 
-        // ── Init ──
-        async init() {
-            // Check for existing batches
-            try {
-                const r = await fetch(`/api/dashboard/batches?domain=${this.domain}`);
-                const d = await r.json();
-                if (d.keyword_batches?.length || d.product_batches?.length) {
-                    // If both exist, can jump to filter directly
-                }
-            } catch (e) { /* ignore */ }
-        },
+        async init() {},
 
         // ── Stage 1: Upload keywords ──
         async uploadKeywords() {
             const fileEl = document.getElementById('kwFile');
-            const file = fileEl?.files?.[0];
-            if (!file) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+            const files = fileEl?.files;
+            if (!files || files.length === 0) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
 
-            this.uploading = true; this.uploadMsg = '';
-            try {
-                const fd = new FormData();
-                fd.append('file', file);
-                fd.append('domain', this.domain);
-                const r = await fetch('/api/dashboard/upload/keywords', { method: 'POST', body: fd });
-                const d = await r.json();
-                if (d.success) {
-                    this.kwBatchLabel = d.batch_label;
-                    this.uploadMsg = `已导入 ${d.keyword_count} 个关键词, ${d.word_root_count} 个词根`;
-                    this.uploadOk = true;
-                    this.doneStages.add('upload_kw');
-                    await this.fetchAsins();
-                } else {
-                    this.uploadMsg = d.error || '上传失败';
-                    this.uploadOk = false;
+            this.uploading = true; this.uploadMsg = ''; this.kwResults = [];
+            for (const file of files) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('domain', this.domain);
+                    const r = await fetch('/api/dashboard/upload/keywords', { method: 'POST', body: fd });
+                    const d = await r.json();
+                    if (d.success) {
+                        this.kwBatchLabel = d.batch_label;
+                        this.kwResults.push({ file: file.name, ok: true, period: d.data_period || '?', imported: d.keyword_count });
+                        this.doneStages.add('upload_kw');
+                    } else {
+                        this.kwResults.push({ file: file.name, ok: false, period: '', imported: 0 });
+                        this.uploadMsg = d.error || '上传失败';
+                    }
+                } catch (e) {
+                    this.kwResults.push({ file: file.name, ok: false, period: '', imported: 0 });
+                    this.uploadMsg = '网络错误: ' + e.message;
                 }
-            } catch (e) {
-                this.uploadMsg = '网络错误: ' + e.message;
-                this.uploadOk = false;
             }
             this.uploading = false;
+            this.uploadOk = this.kwResults.some(r => r.ok);
+            if (this.uploadOk) this.uploadMsg = `成功导入 ${this.kwResults.filter(r => r.ok).length}/${this.kwResults.length} 个文件`;
+        },
+
+        async proceedToAsins() {
+            await this.fetchAsins();
         },
 
         // ── Stage 2: Fetch unique ASINs ──
@@ -355,44 +398,45 @@ function dashboard() {
         // ── Stage 3: Upload products ──
         async uploadProducts() {
             const fileEl = document.getElementById('prodFile');
-            const file = fileEl?.files?.[0];
-            if (!file) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+            const files = fileEl?.files;
+            if (!files || files.length === 0) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
 
-            this.uploading = true; this.uploadMsg = '';
-            try {
-                const fd = new FormData();
-                fd.append('file', file);
-                fd.append('domain', this.domain);
-                const r = await fetch('/api/dashboard/upload/products', { method: 'POST', body: fd });
-                const d = await r.json();
-                if (d.success) {
-                    this.prodBatchLabel = d.batch_label;
-                    this.uploadMsg = `已导入 ${d.product_count} 个产品`;
-                    this.uploadOk = true;
-                    this.prodLoaded = true;
-                    this.doneStages.add('upload_prod');
-                } else {
-                    this.uploadMsg = d.error || '上传失败';
-                    this.uploadOk = false;
+            this.uploading = true; this.uploadMsg = ''; this.prodResults = [];
+            for (const file of files) {
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('domain', this.domain);
+                    fd.append('start_month', this.startMonth);
+                    const r = await fetch('/api/dashboard/upload/products', { method: 'POST', body: fd });
+                    const d = await r.json();
+                    if (d.success) {
+                        this.prodBatchLabel = d.batch_label;
+                        this.prodResults.push({ file: file.name, ok: true, seq: d.sequence || 0, period: d.data_period || '?', imported: d.product_count });
+                        this.prodLoaded = true;
+                        this.doneStages.add('upload_prod');
+                    } else {
+                        this.prodResults.push({ file: file.name, ok: false, seq: 0, period: '', imported: 0 });
+                        this.uploadMsg = d.error || '上传失败';
+                    }
+                } catch (e) {
+                    this.prodResults.push({ file: file.name, ok: false, seq: 0, period: '', imported: 0 });
+                    this.uploadMsg = '网络错误: ' + e.message;
                 }
-            } catch (e) {
-                this.uploadMsg = '网络错误: ' + e.message;
-                this.uploadOk = false;
             }
             this.uploading = false;
+            this.uploadOk = this.prodResults.some(r => r.ok);
+            if (this.uploadOk) this.uploadMsg = `成功导入 ${this.prodResults.filter(r => r.ok).length}/${this.prodResults.length} 个文件`;
         },
 
         async enterFilter() {
             this.stage = 'filter';
-            // Load word roots
             try {
                 const r = await fetch(`/api/dashboard/word-roots?keyword_batch_label=${encodeURIComponent(this.kwBatchLabel)}&domain=${this.domain}`);
                 const d = await r.json();
                 this.roots = d.roots;
             } catch (e) { /* ignore */ }
-            // Load saved niches
             await this.loadNiches();
-            // Apply empty filter (show all)
             await this.applyFilter();
         },
 
@@ -403,17 +447,16 @@ function dashboard() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        keyword_batch_label: this.kwBatchLabel,
-                        product_batch_label: this.prodBatchLabel,
                         root_words: [...this.activeRoots],
                         domain: this.domain,
+                        data_period: this.selectedPeriod,
                     }),
                 });
                 const d = await r.json();
                 this.keywords = d.keywords || [];
                 this.asins = d.asins || [];
                 this.summary = d.summary || { keyword_count: 0, asin_count: 0, total_sv: 0, total_purchases: 0, avg_cpc: 0, avg_price: 0, total_monthly_sales: 0, total_monthly_revenue: 0 };
-                // Compute hint roots
+                this.periods = d.periods || [];
                 this.updateHintRoots();
             } catch (e) { console.error(e); }
         },

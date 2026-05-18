@@ -3,11 +3,29 @@
 列顺序固定（卖家精灵导出模板不变），优先按位置索引取值，异常时回落列名匹配。
 """
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
 
 from .models import SessionLocal, SellerspriteKeyword, SellerspriteProduct
+
+
+def parse_product_sequence(filename: str) -> int:
+    """从产品文件名提取序号。Product-US-20260518 (1).xlsx → 1，无编号 → 0"""
+    m = re.search(r'\((\d+)\)', filename)
+    return int(m.group(1)) if m else 0
+
+
+def compute_period(start_month: str, offset: int) -> str:
+    """根据起始月和偏移量计算数据月份。2024-03 + 2 → 2024-05"""
+    if not start_month:
+        return ""
+    y, m = map(int, start_month.split("-"))
+    m += offset
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return f"{y}-{m:02d}"
 
 
 # ═══════════════════════════════════════════════════════
@@ -245,7 +263,7 @@ def import_kcr_to_db(records: list[dict], domain: str, batch_id: str,
 
 
 def import_product_to_db(records: list[dict], domain: str, batch_id: str,
-                         expiry_days: int = 30) -> int:
+                         expiry_days: int = 30, data_period: str = "") -> int:
     """批量写入产品数据到 sellersprite_product 表。返回导入数。
 
     已存在且未过期的 ASIN 跳过，避免重复 Playwright 查询。
@@ -264,6 +282,7 @@ def import_product_to_db(records: list[dict], domain: str, batch_id: str,
                 existing = db.query(SellerspriteProduct).filter(
                     SellerspriteProduct.asin == r["asin"],
                     SellerspriteProduct.domain == domain,
+                    SellerspriteProduct.data_period == data_period,
                 ).first()
                 if existing and existing.queried_at:
                     if cutoff and existing.queried_at > cutoff:
@@ -277,6 +296,7 @@ def import_product_to_db(records: list[dict], domain: str, batch_id: str,
                     asin=r["asin"],
                     domain=domain,
                     batch_id=batch_id,
+                    data_period=data_period,
                     sku=r.get("sku", ""),
                     title=r.get("title", ""),
                     brand=r.get("brand", ""),
