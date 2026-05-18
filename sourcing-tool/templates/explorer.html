@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>赛道探索器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  h1 { font-size: 22px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .card h2 { font-size: 16px; margin-bottom: 10px; }
+  .card.disabled { opacity: 0.35; pointer-events: none; }
+  .form-row { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .btn { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .btn-primary { background: #4a90d9; color: #fff; }
+  .btn-primary:hover { background: #3a7bc8; }
+  .btn-outline { background: #fff; color: #4a90d9; border: 1px solid #4a90d9; }
+  .btn-accent { background: #e67e22; color: #fff; }
+  .btn-back { background: #fff; color: #999; border: 1px solid #ddd; }
+  .note { color: #999; font-size: 12px; }
+  .info { color: #27ae60; }
+  .error { color: #c0392b; padding: 8px 12px; background: #fdf0f0; border: 1px solid #f5c6cb; border-radius: 6px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #4a90d9; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Segments grid */
+  .seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .seg-card {
+    border: 2px solid #e0e0e0; border-radius: 8px; padding: 14px; cursor: pointer; transition: all 0.2s;
+  }
+  .seg-card:hover { border-color: #4a90d9; box-shadow: 0 2px 8px rgba(74,144,217,0.15); }
+  .seg-card.selected { border-color: #4a90d9; background: #f0f6ff; }
+  .seg-card .seg-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .seg-card .seg-roots { font-size: 11px; color: #4a90d9; margin-bottom: 8px; }
+  .seg-card .seg-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 12px; }
+  .seg-card .seg-meta .wide { grid-column: 1 / -1; }
+  .seg-card .seg-meta .val { font-weight: 600; }
+  .seg-card .seg-meta .lbl { color: #999; font-size: 11px; }
+
+  .top-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+
+  /* Root chips — same as v1 */
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 250px; overflow-y: auto; padding: 4px 0; }
+  .chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid #ddd; background: #f9f9f9; user-select: none; display: flex; align-items: center; gap: 5px; transition: all 0.15s; }
+  .chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  .chip.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  .chip.hint { background: #fff0f0; color: #c0392b; border-color: #e74c3c; }
+  .chip.muted { opacity: 0.35; }
+  .chip .cnt { font-size: 10px; padding: 1px 5px; border-radius: 10px; background: rgba(0,0,0,0.08); }
+  .chip.active .cnt { background: rgba(255,255,255,0.25); }
+  .chip-legend { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #999; flex-wrap: wrap; }
+
+  /* Stats */
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stat { padding: 10px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border-radius: 8px; min-width: 90px; }
+  .stat .label { font-size: 11px; opacity: 0.85; }
+  .stat .value { font-size: 17px; font-weight: 700; }
+
+  .tbl-wrap { max-height: 400px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #f8f8f8; padding: 6px 8px; text-align: right; font-weight: 600; position: sticky; top: 0; z-index: 1; border-bottom: 2px solid #eee; cursor: pointer; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 4px 8px; text-align: right; border-bottom: 1px solid #f5f5f5; }
+  tr:hover { background: #f8faff; }
+
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>赛道探索器</h1>
+    </div>
+    <a href="/" style="color:#4a90d9;text-decoration:none;">← 选品工具</a>
+  </header>
+
+  <!-- Step 1 -->
+  <div class="card" id="step1">
+    <h2>上传文件</h2>
+    <p class="note" style="margin-bottom:8px;">固定模板：关键词 | 点击量 | CPC | 月购买量</p>
+    <div class="form-row">
+      <input type="file" id="inputFile" accept=".csv,.xlsx,.xls" style="flex:1;">
+      <button class="btn btn-primary" onclick="uploadAndParse()">上传并解析</button>
+    </div>
+    <span id="uploadNote"></span>
+
+    <!-- Core words input — shown after upload -->
+    <div id="coreWordsRow" style="display:none;margin-top:12px;">
+      <p class="note" style="margin-bottom:4px;">输入产品词（逗号分隔），或点选高频词根，然后点击筛选。</p>
+      <div class="form-row">
+        <input type="text" id="coreWords" placeholder="如：shirt, mug, wine glass" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+        <button class="btn btn-accent" onclick="doSegment()">开始筛选</button>
+      </div>
+      <div style="margin-top:6px;">
+        <span style="font-size:11px;color:#999;">高频词根（点击选择/取消）:</span>
+        <div class="chip-wrap" id="topRootsChips" style="max-height:80px;margin-top:4px;"></div>
+      </div>
+      <span id="segNote"></span>
+    </div>
+  </div>
+
+  <!-- Step 2: Segments -->
+  <div class="card" id="step2" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h2 style="margin:0;">细分市场 <span id="segCount" style="font-weight:400;font-size:13px;color:#999;"></span></h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:12px;color:#999;">排序:</span>
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="sortSegs('clicks')">点击量</button>
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="sortSegs('sales')">订单量</button>
+        <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="sortSegs('count')">词数</button>
+        <select id="pageSize" onchange="renderSegments()" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+          <option value="20">20</option><option value="50">50</option><option value="100">100</option>
+        </select>
+      </div>
+    </div>
+    <div class="seg-grid" id="segGrid"></div>
+    <div id="segPager" style="text-align:center;margin-top:8px;"></div>
+  </div>
+
+  <!-- Step 4: Drill down within selected segment -->
+  <div class="card" id="step3" style="display:none;">
+    <div class="top-bar">
+      <button class="btn btn-back" onclick="backToSegments()">← 返回产品段</button>
+      <h2 id="segTitle" style="font-size:15px;margin:0;"></h2>
+      <button class="btn btn-outline" onclick="selectAllRoots()">全选</button>
+      <button class="btn btn-outline" onclick="deselectAllRoots()">取消</button>
+      <button class="btn btn-outline" onclick="selectTopRoots(20)">Top 20</button>
+      <button class="btn btn-accent" onclick="saveTrack()">保留赛道</button>
+    </div>
+    <div class="stats" id="statsBar"></div>
+    <div class="chip-legend">
+      <span><span class="chip active" style="display:inline-flex;padding:2px 10px;cursor:default;">已选</span> 交集筛选</span>
+      <span>|</span>
+      <span><span class="chip hint" style="display:inline-flex;padding:2px 10px;cursor:default;">可选</span> 结果中仍有</span>
+      <span>|</span>
+      <span><span class="chip muted" style="display:inline-flex;padding:2px 10px;cursor:default;">灰色</span> 不存在</span>
+    </div>
+    <div class="chip-wrap" id="chipArea"></div>
+    <small id="filterNote" style="display:block;margin-top:8px;"></small>
+    <div class="tbl-wrap" style="max-height:350px;margin-top:8px;">
+      <table id="filterTable"><thead></thead><tbody></tbody></table>
+    </div>
+    <div id="trackList" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<script>
+// State
+let allKeywords = [];  // parsed from file
+let allSegments = [];
+let segKeywords = [];  // current segment's keywords
+let segRoots = [];
+let activeRoots = new Set();
+let tracks = [];
+let sortCol = null, sortAsc = true;
+let segSortBy = 'clicks';
+let segSortAsc = false;
+let segPage = 0;
+let segPageSize = 20;
+let _lastInputs = [];  // product words from last doSegment
+
+const STOP_WORDS = new Set(['a','an','the','is','are','was','were','be','been','being','have','has','had','having','do','does','did','doing','will','would','shall','should','can','could','may','might','must','i','me','my','we','our','us','you','your','he','she','it','its','they','them','their','this','that','these','those','in','on','at','to','for','of','with','by','from','and','or','but','not','no','nor','if','so','as','than','also','too','very','just','about','up','out','down','off','over','under','again','all','each','every','both','few','more','most','other','some','such','only','own','same','new','now','then','here','there','when','where','why','how','which','who','what','whom','one','two','three','first','last','get','got','go','going','into','onto','after','before','during','without','within','per','like','much','many','any','been','still','well','back','also','even','already','yet']);
+
+function toSingular(w) {
+  if (w.endsWith('ies') && w.length > 4) return w.slice(0, -3) + 'y';
+  if (w.endsWith('ses') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('xes') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('ches') && w.length > 5) return w.slice(0, -2);
+  if (w.endsWith('shes') && w.length > 5) return w.slice(0, -2);
+  if (w.endsWith('es') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) return w.slice(0, -1);
+  return w;
+}
+
+// ===== Upload =====
+async function uploadAndParse() {
+  const f = document.getElementById('inputFile').files[0];
+  if (!f) { document.getElementById('uploadNote').innerHTML = '<span class="error">请选择文件</span>'; return; }
+
+  const note = document.getElementById('uploadNote');
+  note.innerHTML = '<span class="spinner"></span> 解析中...';
+  document.getElementById('coreWordsRow').style.display = 'none';
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('step3').style.display = 'none';
+  allKeywords = [];
+  allSegments = [];
+  tracks = [];
+
+  const fd = new FormData(); fd.append('file', f);
+  let r, d;
+  try { r = await fetch('/api/explorer/upload', { method:'POST', body:fd }); d = await r.json(); }
+  catch(e) { note.innerHTML = `<span class="error">${e.message}</span>`; return; }
+  if (!d.ok) { note.innerHTML = `<span class="error">${d.error}</span>`; return; }
+
+  allKeywords = d.keywords;
+  note.innerHTML = `<span class="info">已解析 ${allKeywords.length} 个关键词</span>`;
+  document.getElementById('coreWordsRow').style.display = '';
+
+  // Build top-20 root chips from all keywords
+  const globalRootCounts = {};
+  allKeywords.forEach(r => {
+    String(r.kw||'').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length>=2 && !STOP_WORDS.has(w)).forEach(w => {
+      const s = toSingular(w);
+      globalRootCounts[s] = (globalRootCounts[s]||0) + 1;
+    });
+  });
+  window._topRoots = Object.entries(globalRootCounts).sort((a,b) => b[1]-a[1]).slice(0, 30);
+  window._selectedTopRoots = new Set();
+  renderTopRootChips();
+  document.getElementById('coreWords').focus();
+}
+
+// ===== Segment by core words =====
+function renderTopRootChips() {
+  const area = document.getElementById('topRootsChips');
+  area.innerHTML = window._topRoots.map(([w,c]) => {
+    const sel = window._selectedTopRoots.has(w);
+    return `<span class="chip${sel?' active':''}" onclick="toggleTopRoot('${w}')">${w}<span class="cnt">${c}</span></span>`;
+  }).join('');
+  // Sync to text input
+  document.getElementById('coreWords').value = [...window._selectedTopRoots].join(', ');
+}
+
+function toggleTopRoot(w) {
+  if (window._selectedTopRoots.has(w)) window._selectedTopRoots.delete(w);
+  else window._selectedTopRoots.add(w);
+  renderTopRootChips();
+}
+
+function doSegment() {
+  const raw = document.getElementById('coreWords').value.trim();
+  // Combine text input + selected top roots
+  const chipWords = [...(window._selectedTopRoots||[])];
+  const textWords = raw ? raw.split(',').map(w => w.toLowerCase().trim()).filter(w => w.length >= 2) : [];
+  const inputs = [...new Set([...chipWords, ...textWords])];
+  _lastInputs = inputs;
+  if (inputs.length === 0) { document.getElementById('segNote').innerHTML = '<span class="error">请输入或点选至少一个产品词</span>'; return; }
+
+  document.getElementById('segNote').innerHTML = '<span class="spinner"></span> 筛选中...';
+
+  // 1. 产品词做单复数归一 + 大小写不敏感，匹配关键词（词边界匹配）
+  const inputSingulars = inputs.map(w => toSingular(w));
+  const matched = allKeywords.filter(r => {
+    const kw = String(r.kw||'').toLowerCase();
+    const kwRoots = kw.split(/[^a-z0-9]+/).map(w => toSingular(w));
+    return inputSingulars.some(w => kwRoots.includes(w));
+  });
+  if (matched.length === 0) {
+    document.getElementById('segNote').innerHTML = '<span class="error">未找到匹配关键词</span>';
+    return;
+  }
+
+  // 2. 提取词根（保留字母数字组合如 kn95），每个词根作为一个细分市场
+  const rootCounts = {};
+  const rootKeywords = {};  // root -> [keyword rows]
+  matched.forEach(r => {
+    String(r.kw||'').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length>=2 && !STOP_WORDS.has(w)).forEach(w => {
+      const s = toSingular(w);
+      rootCounts[s] = (rootCounts[s]||0) + 1;
+      if (!rootKeywords[s]) rootKeywords[s] = [];
+      rootKeywords[s].push(r);
+    });
+  });
+
+  // 3. 排除用户输入的产品词本身
+  const excludeRoots = new Set(inputSingulars);
+  // 4. 去重：同关键词多次出现只算一次
+  allSegments = [];
+  for (const [root, count] of Object.entries(rootCounts)) {
+    if (excludeRoots.has(root)) continue;  // 不展示用户输入的产品词本身
+
+    const kws = rootKeywords[root];
+    // 去重（同一关键词可能含多个词根）
+    const uniqueKws = [...new Map(kws.map(r => [r.kw, r])).values()];
+
+    const total_clicks = uniqueKws.reduce((s,r) => s + (Number(r['流量']||r.sv||0)||0), 0);
+    const total_sales = uniqueKws.reduce((s,r) => s + (Number(r.sales||0)||0), 0);
+    const cpcVals = uniqueKws.filter(r => Number(r.cpc||0) > 0);
+    const avg_cpc = cpcVals.length > 0 ? cpcVals.reduce((s,r)=>s+Number(r.cpc),0) / cpcVals.length : 0;
+
+    allSegments.push({
+      anchor: root,
+      roots: [root],
+      n_keywords: uniqueKws.length,
+      total_clicks, total_sales,
+      avg_cpc: Math.round(avg_cpc*100)/100,
+      conv: total_clicks > 0 ? total_sales/total_clicks : 0,
+      keywords: uniqueKws,
+      _count: count,
+    });
+  }
+
+  document.getElementById('segNote').innerHTML = '';
+  document.getElementById('step2').style.display = '';
+  document.getElementById('step3').style.display = 'none';
+  document.getElementById('segCount').textContent = `(${allSegments.length} 个细分市场，来自 ${matched.length} 个关键词)`;
+  segPage = 0;
+  renderSegments();
+}
+
+function sortSegs(by) {
+  if (segSortBy === by) segSortAsc = !segSortAsc;
+  else { segSortBy = by; segSortAsc = false; }
+  segPage = 0;
+  renderSegments();
+}
+
+function renderSegments() {
+  segPageSize = parseInt(document.getElementById('pageSize').value) || 20;
+
+  // Sort
+  const sorted = [...allSegments];
+  const key = segSortBy === 'clicks' ? 'total_clicks' : segSortBy === 'sales' ? 'total_sales' : segSortBy === 'conv' ? 'conv' : 'n_keywords';
+  sorted.sort((a,b) => segSortAsc ? (a[key]-b[key]) : (b[key]-a[key]));
+
+  // Paginate
+  const totalPages = Math.ceil(sorted.length / segPageSize);
+  const start = segPage * segPageSize;
+  const page = sorted.slice(start, start + segPageSize);
+
+  document.getElementById('segGrid').innerHTML = page.map((s,i) => {
+    const globalIdx = allSegments.indexOf(s);
+    const isSel = _activeSegIdx === globalIdx;
+    return `<div class="seg-card${isSel?' selected':''}" data-idx="${globalIdx}" onclick="selectSegment(${globalIdx})">
+      <div class="seg-name">${s.anchor}</div>
+      <div class="seg-roots">${s.roots.slice(0,5).join(' · ')}</div>
+      <div class="seg-meta">
+        <div><span class="lbl">关键词 / 词频</span><br><span class="val">${s.n_keywords} / ${s._count||0}</span></div>
+        <div><span class="lbl">CPC</span><br><span class="val">$${s.avg_cpc.toFixed(2)}</span></div>
+        <div class="wide"><span class="lbl">点击量 / 订单量</span><br><span class="val">${s.total_clicks.toLocaleString()} / ${s.total_sales.toLocaleString()}</span></div>
+        <div class="wide"><span class="lbl">转化率</span><br><span class="val">${(s.conv*100).toFixed(2)}%</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Pager
+  document.getElementById('segPager').innerHTML = totalPages <= 1 ? '' : `
+    <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="segPage=Math.max(0,segPage-1);renderSegments();" ${segPage===0?'disabled':''}>上一页</button>
+    <span style="font-size:12px;color:#999;margin:0 8px;">${segPage+1} / ${totalPages}</span>
+    <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="segPage=Math.min(totalPages-1,segPage+1);renderSegments();" ${segPage>=totalPages-1?'disabled':''}>下一页</button>
+  `;
+}
+
+// ===== Select Segment → Manual Filter =====
+let _activeSegIdx = null;
+
+function selectSegment(idx) {
+  _activeSegIdx = idx;
+  // Highlight all cards with matching data-idx (including across pages)
+  document.querySelectorAll('.seg-card').forEach(c => {
+    c.classList.toggle('selected', parseInt(c.dataset.idx) === idx);
+  });
+  const seg = allSegments[idx];
+  segKeywords = seg.keywords;
+  document.getElementById('step3').style.display = '';
+  document.getElementById('segTitle').textContent = `${seg.anchor} — ${seg.roots.slice(0,5).join(' · ')}`;
+  activeRoots = new Set();
+  extractSegRoots();
+  renderAll();
+}
+
+function backToSegments() {
+  document.getElementById('step3').style.display = 'none';
+  document.querySelectorAll('.seg-card').forEach(c => c.classList.remove('selected'));
+}
+
+// ===== Root extraction within segment =====
+function extractSegRoots() {
+  const cmap = {};
+  segKeywords.forEach(r => {
+    const kw = String(r.kw||'').toLowerCase().trim();
+    const words = kw.split(/[^a-z0-9]+/).filter(w => w.length >= 2 && !STOP_WORDS.has(w));
+    const merged = new Set(words.map(w => toSingular(w)));
+    merged.forEach(w => { cmap[w] = (cmap[w]||0) + 1; });
+  });
+  segRoots = Object.entries(cmap).map(([w,c]) => ({word:w, count:c, pct:(c/segKeywords.length*100).toFixed(1)}))
+    .sort((a,b) => b.count - a.count);
+}
+
+// ===== Filtering (same logic as v1, but on segKeywords) =====
+function getFiltered() {
+  if (activeRoots.size === 0) return segKeywords;
+  return segKeywords.filter(r => {
+    const words = String(r.kw||'').toLowerCase().split(/[^a-z0-9]+/).map(w => toSingular(w));
+    const s = new Set(words);
+    return [...activeRoots].every(w => s.has(w));
+  });
+}
+
+function renderAll() { renderChips(); renderFilter(); renderFilterStats(); renderTrackList(); }
+function toggleRoot(w) { activeRoots.has(w) ? activeRoots.delete(w) : activeRoots.add(w); renderAll(); }
+function selectAllRoots() { activeRoots = new Set(segRoots.map(r=>r.word)); renderAll(); }
+function deselectAllRoots() { activeRoots.clear(); renderAll(); }
+function selectTopRoots(n) { activeRoots = new Set(segRoots.slice(0,n).map(r=>r.word)); renderAll(); }
+
+function renderChips() {
+  const filtered = getFiltered();
+  const avail = new Set();
+  const fCounts = {};
+  if (activeRoots.size > 0) {
+    filtered.forEach(r => {
+      String(r.kw||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>=2&&!STOP_WORDS.has(w)).forEach(w => {
+        const s = toSingular(w); avail.add(s); fCounts[s] = (fCounts[s]||0) + 1;
+      });
+    });
+  }
+  document.getElementById('chipArea').innerHTML = segRoots.map(r => {
+    const count = activeRoots.size > 0 ? (fCounts[r.word]||0) : r.count;
+    let cls = activeRoots.has(r.word) ? 'active' : (activeRoots.size > 0 ? (avail.has(r.word) ? 'hint' : 'muted') : '');
+    return `<span class="chip ${cls}" onclick="toggleRoot('${r.word}')">${r.word}<span class="cnt">${count}</span></span>`;
+  }).join('');
+}
+
+function renderFilterStats() {
+  const f = getFiltered();
+  const clicks = f.reduce((s,r)=>s+(Number(r['流量']||0)||0),0);
+  const sales = f.reduce((s,r)=>s+(Number(r.sales)||0),0);
+  const avgCpc = f.length>0 ? f.reduce((s,r)=>s+(Number(r.cpc)||0),0)/f.length : 0;
+  const conv = clicks>0?(sales/clicks*100).toFixed(2):'0';
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat"><div class="label">词数</div><div class="value">${f.length}/${segKeywords.length}</div></div>
+    <div class="stat"><div class="label">点击量</div><div class="value">${clicks.toLocaleString()}</div></div>
+    <div class="stat"><div class="label">购买量</div><div class="value">${sales.toLocaleString()}</div></div>
+    <div class="stat"><div class="label">CPC</div><div class="value">$${avgCpc.toFixed(2)}</div></div>
+    <div class="stat"><div class="label">转化率</div><div class="value">${conv}%</div></div>
+  `;
+}
+
+function renderFilter() {
+  const f = getFiltered();
+  if (sortCol !== null) {
+    f.sort((a,b) => {
+      let va, vb;
+      if (sortCol==='kw') { va=String(a.kw||''); vb=String(b.kw||''); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
+      if (sortCol==='流量') { va=Number(a['流量']||0); vb=Number(b['流量']||0); }
+      else if (sortCol==='cpc') { va=Number(a.cpc||0); vb=Number(b.cpc||0); }
+      else if (sortCol==='sales') { va=Number(a.sales||0); vb=Number(b.sales||0); }
+      else if (sortCol==='conv') { va=Number(a.conv||0); vb=Number(b.conv||0); }
+      else { va=0; vb=0; }
+      return sortAsc ? va-vb : vb-va;
+    });
+  }
+  const cols = [{k:'kw',l:'关键词'},{k:'流量',l:'点击量'},{k:'cpc',l:'CPC'},{k:'sales',l:'月购买量'},{k:'conv',l:'转化率'}];
+  document.getElementById('filterTable').querySelector('thead').innerHTML =
+    '<tr><th>#</th>' + cols.map(c => `<th onclick="toggleSort('${c.k}')">${c.l}${sortCol===c.k?(sortAsc?' ▲':' ▼'):''}</th>`).join('') + '<th>命中词根</th></tr>';
+  document.getElementById('filterTable').querySelector('tbody').innerHTML = f.slice(0,100).map((r,i) => {
+    const clicks = Number(r['流量']||0), sales = Number(r.sales||0), cpc = Number(r.cpc||0);
+    const cv = clicks>0?(sales/clicks*100).toFixed(2):'0';
+    const kw = String(r.kw||'').toLowerCase();
+    const kwMerged = new Set(kw.split(/[^a-z0-9]+/).map(w => toSingular(w)));
+    // 命中词根中去掉已选中的（因为选中词根已经筛过了，每行都包含，展示无意义）
+    const matched = [...activeRoots].filter(w => kwMerged.has(w));
+    const otherRoots = [...kwMerged].filter(w => !activeRoots.has(w) && !STOP_WORDS.has(w)).sort().slice(0, 5);
+    return `<tr><td>${i+1}</td><td>${r.kw}</td><td>${clicks.toLocaleString()}</td><td>$${cpc.toFixed(2)}</td><td>${sales.toLocaleString()}</td><td>${cv}%</td><td>${otherRoots.map(w=>`<span style="background:#e8f0fe;padding:1px 4px;border-radius:3px;font-size:11px;margin:1px;">${w}</span>`).join('')}</td></tr>`;
+  }).join('');
+  document.getElementById('filterNote').textContent = `筛选结果: ${f.length} 条`;
+}
+
+function toggleSort(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = false; }
+  renderFilter();
+}
+
+// ===== Track =====
+function saveTrack() {
+  if (activeRoots.size === 0) return;
+  const sorted = [...activeRoots].sort();
+  const segAnchor = allSegments[_activeSegIdx]?.anchor || '';
+  const productWords = _lastInputs.join(', ');
+  const title = segAnchor + ' + ' + sorted.join('+');
+  const f = getFiltered();
+  const sums = { clicks: f.reduce((s,r)=>s+(Number(r['流量']||0)||0),0), sales: f.reduce((s,r)=>s+(Number(r.sales)||0),0) };
+  const exist = tracks.findIndex(t => t.title === title);
+  if (exist >= 0) { tracks[exist] = { roots: sorted, title, count: f.length, sums, productWords, segAnchor }; }
+  else { tracks.push({ roots: sorted, title, count: f.length, sums, productWords, segAnchor }); }
+  renderTrackList();
+}
+
+let trackSortCol = null, trackSortAsc = false;
+
+function renderTrackList() {
+  const area = document.getElementById('trackList');
+  if (tracks.length === 0) { area.innerHTML = ''; return; }
+
+  // Sort
+  const sorted = [...tracks];
+  if (trackSortCol) {
+    sorted.sort((a,b) => {
+      let va, vb;
+      if (trackSortCol === 'seg') { va = a.segAnchor||''; vb = b.segAnchor||''; return trackSortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
+      if (trackSortCol === 'count') { va = a.count; vb = b.count; }
+      if (trackSortCol === 'clicks') { va = a.sums.clicks; vb = b.sums.clicks; }
+      if (trackSortCol === 'sales') { va = a.sums.sales; vb = b.sums.sales; }
+      if (trackSortCol === 'conv') { va = a.sums.clicks>0?a.sums.sales/a.sums.clicks:0; vb = b.sums.clicks>0?b.sums.sales/b.sums.clicks:0; }
+      return trackSortAsc ? va - vb : vb - va;
+    });
+  }
+
+  const arrow = (col) => trackSortCol === col ? (trackSortAsc ? ' ▲' : ' ▼') : '';
+
+  area.innerHTML = `<h3 style="font-size:14px;margin:8px 0;">已保存赛道 (${tracks.length})</h3>
+    <table><thead><tr>
+      <th>产品词</th>
+      <th onclick="toggleTrackSort('seg')">细分市场${arrow('seg')}</th>
+      <th>选取词根</th>
+      <th onclick="toggleTrackSort('count')">关键词${arrow('count')}</th>
+      <th onclick="toggleTrackSort('clicks')">点击量${arrow('clicks')}</th>
+      <th onclick="toggleTrackSort('sales')">购买量${arrow('sales')}</th>
+      <th onclick="toggleTrackSort('conv')">转化率${arrow('conv')}</th>
+      <th></th>
+    </tr></thead><tbody>
+    ${sorted.map((t,i) => {
+      const conv = t.sums.clicks>0?(t.sums.sales/t.sums.clicks*100).toFixed(2):'0';
+      return `<tr>
+        <td><span style="font-size:12px;color:#666;">${t.productWords||''}</span></td>
+        <td><strong>${t.segAnchor||''}</strong></td>
+        <td>${(t.roots||[]).join(' + ')}</td>
+        <td>${t.count}</td>
+        <td>${t.sums.clicks.toLocaleString()}</td>
+        <td>${t.sums.sales.toLocaleString()}</td>
+        <td>${conv}%</td>
+        <td><span style="color:#e74c3c;cursor:pointer;font-size:12px;" onclick="tracks.splice(${i},1);renderTrackList();">删除</span></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+
+function toggleTrackSort(col) {
+  if (trackSortCol === col) trackSortAsc = !trackSortAsc;
+  else { trackSortCol = col; trackSortAsc = false; }
+  renderTrackList();
+}
+</script>
+</body>
+</html>

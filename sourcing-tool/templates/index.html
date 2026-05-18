@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="app()" class="max-w-5xl mx-auto">
+
+    <!-- ═══ 上传阶段 ═══ -->
+    <template x-if="stage === 'upload'">
+        <div>
+            <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold">亚马逊选品 SOP</h1>
+                <p class="text-gray-400 mt-2">上传 ABA 报表 → 自动查询卖家精灵 → 生成候选清单</p>
+            </div>
+
+            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 max-w-2xl mx-auto">
+                <!-- 文件上传 -->
+                <div class="mb-6">
+                    <label class="block text-sm text-gray-400 mb-2">上传 ABA 搜索词报表（CSV）</label>
+                    <label class="block cursor-pointer">
+                        <input type="file" accept=".csv,.xlsx,.xls" @change="onFileChange($event)" class="hidden">
+                        <div class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-blue-500 transition"
+                             :class="abaFile ? 'border-green-500 bg-green-900/10' : ''">
+                            <template x-if="!abaFile">
+                                <div>
+                                    <p class="text-gray-400 text-lg">点击选择 ABA 报表文件</p>
+                                    <p class="text-gray-600 text-sm mt-1">支持 CSV / Excel，自动识别站点</p>
+                                </div>
+                            </template>
+                            <template x-if="abaFile">
+                                <div>
+                                    <p class="text-green-400 text-lg" x-text="abaFile.name"></p>
+                                    <p class="text-gray-500 text-sm mt-1" x-text="formatFileSize(abaFile.size)"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- 参数配置 -->
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">目标站点</label>
+                        <select x-model="config.domain" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                            <option value="CA">加拿大 CA</option>
+                            <option value="US">美国 US</option>
+                            <option value="UK">英国 UK</option>
+                            <option value="DE">德国 DE</option>
+                            <option value="JP">日本 JP</option>
+                        </select>
+                        <p class="text-xs text-gray-600 mt-1" x-show="detectedDomain" x-text="'已从文件名检测到: ' + detectedDomain"></p>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">转化系数下限 <span class="text-gray-500">< 此值淘汰</span></label>
+                        <input type="number" x-model="config.conv_index_min" step="0.1" min="0"
+                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">单份额上限 % <span class="text-gray-500">> 此值淘汰</span></label>
+                        <input type="number" x-model="config.share_max" step="1" min="0" max="100"
+                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                    </div>
+                </div>
+
+                <!-- 数据有效期 + 海运参数 -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">卖家精灵数据有效期 <span class="text-gray-500">天</span></label>
+                        <input type="number" x-model="config.data_expiry_days" step="1" min="0"
+                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                        <p class="text-xs text-gray-600 mt-1">30天内不重查，0=每次都查新</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">海运 CBM 费率 <span class="text-gray-500">USD/CBM</span></label>
+                        <input type="number" x-model="config.ship_cbm_rate" step="1" min="0"
+                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">操作费 <span class="text-gray-500">USD/件</span></label>
+                        <input type="number" x-model="config.ship_handling" step="0.1" min="0"
+                               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-white">
+                    </div>
+                </div>
+
+                <!-- 开始按钮 -->
+                <button @click="startAuto()" :disabled="!abaFile || running"
+                        class="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-white font-bold text-lg transition-colors">
+                    <span x-show="!running">开始全自动筛选 →</span>
+                    <span x-show="running" class="flex items-center justify-center gap-2">
+                        <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        运行中...
+                    </span>
+                </button>
+
+                <!-- 凭据设置 -->
+                <div class="mt-4 border-t border-gray-700 pt-4">
+                    <button @click="showCreds = !showCreds" class="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        卖家精灵凭据设置
+                        <svg class="w-3 h-3 transition-transform" :class="showCreds ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <div x-show="showCreds" x-collapse class="mt-3 space-y-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">卖家精灵登录邮箱</label>
+                            <input type="text" x-model="creds.email" placeholder="your@email.com"
+                                   class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">卖家精灵登录密码</label>
+                            <input type="password" x-model="creds.password" placeholder="输入密码"
+                                   class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button @click="saveCreds()" :disabled="savingCreds"
+                                    class="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded text-sm text-white transition-colors">
+                                <span x-show="!savingCreds">保存凭据</span>
+                                <span x-show="savingCreds">保存中...</span>
+                            </button>
+                            <span x-show="credsMsg" class="text-xs" :class="credsOk ? 'text-green-400' : 'text-red-400'" x-text="credsMsg"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- ═══ 运行 / 完成阶段 ═══ -->
+    <template x-if="stage === 'running' || stage === 'done' || stage === 'failed'">
+        <div class="flex gap-6" style="min-height: calc(100vh - 100px)">
+
+            <!-- 左侧：漏斗 -->
+            <div class="w-72 flex-shrink-0" x-show="funnelSteps.some(s => s.count > 0)">
+                <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 sticky top-4">
+                    <h3 class="text-sm font-medium text-gray-400 mb-4">漏斗筛选</h3>
+                    <div class="space-y-1">
+                        <template x-for="(step, i) in funnelSteps" :key="i">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                                          :class="step.status === 'done' ? 'bg-green-600 text-white' : step.status === 'running' ? 'bg-blue-500 text-white animate-pulse' : 'bg-gray-700 text-gray-500'"
+                                          x-text="step.status === 'done' ? '✓' : (i + 1)"></span>
+                                    <span class="text-sm" :class="step.status === 'running' ? 'text-white font-medium' : 'text-gray-400'" x-text="step.label"></span>
+                                </div>
+                                <div class="ml-2 pl-3 border-l-2 py-1" :class="step.status === 'done' ? 'border-green-700' : 'border-gray-700'">
+                                    <div class="flex items-baseline gap-1">
+                                        <span class="text-lg font-bold font-mono" :class="step.status === 'done' ? 'text-white' : 'text-gray-500'" x-text="step.count?.toLocaleString() ?? '—'"></span>
+                                        <template x-if="step.removed > 0">
+                                            <span class="text-xs text-red-400" x-text="'-' + step.removed.toLocaleString()"></span>
+                                        </template>
+                                    </div>
+                                    <div class="mt-1 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-700"
+                                             :class="step.status === 'done' ? 'bg-green-500' : step.status === 'running' ? 'bg-blue-500' : 'bg-gray-600'"
+                                             :style="'width:' + (funnelSteps[0].count > 0 ? (step.count / funnelSteps[0].count * 100) : 0) + '%'"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：进度 / 结果 -->
+            <div class="flex-1 min-w-0">
+
+                <!-- 进度条 + 日志 -->
+                <template x-if="stage === 'running'">
+                    <div class="space-y-4">
+                        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                            <div class="flex items-center gap-3 mb-4">
+                                <svg class="animate-spin h-5 w-5 text-blue-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                <span class="text-lg font-medium" x-text="currentMessage"></span>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                                <div class="bg-blue-500 h-full rounded-full transition-all duration-500" :style="'width:' + progress + '%'"></div>
+                            </div>
+                            <p class="text-right text-sm text-gray-500 mt-1" x-text="progress + '%'"></p>
+                        </div>
+
+                        <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                            <h4 class="text-sm text-gray-500 mb-2">运行日志</h4>
+                            <div class="max-h-80 overflow-y-auto font-mono text-xs space-y-0.5">
+                                <template x-for="(log, i) in logs" :key="i">
+                                    <p class="text-gray-500" x-text="log"></p>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- 失败 -->
+                <template x-if="stage === 'failed'">
+                    <div class="bg-gray-800 rounded-xl p-6 border border-red-700">
+                        <h2 class="text-lg font-medium text-red-400 mb-2">运行失败</h2>
+                        <p class="text-gray-400" x-text="errorMessage"></p>
+                        <button @click="resetApp()" class="mt-4 px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors">重新开始</button>
+                    </div>
+                </template>
+
+                <!-- 完成：候选清单 -->
+                <template x-if="stage === 'done'">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl font-bold">候选产品清单</h2>
+                            <div class="flex gap-2">
+                                <button @click="exportExcel()" class="px-4 py-1.5 bg-green-600 hover:bg-green-500 rounded text-sm text-white transition-colors">导出 Excel</button>
+                                <a :href="'/niche/' + batchId" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-sm text-white transition-colors inline-block">分析 Niche →</a>
+                                <button @click="resetApp()" class="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm text-gray-300 transition-colors">重新筛选</button>
+                            </div>
+                        </div>
+
+                        <!-- 摘要卡片 -->
+                        <div class="grid grid-cols-4 gap-3 mb-4">
+                            <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+                                <div class="text-2xl font-bold text-yellow-400" x-text="summary.total_aba_rows?.toLocaleString()"></div>
+                                <div class="text-xs text-gray-500">原始搜索词</div>
+                            </div>
+                            <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+                                <div class="text-2xl font-bold text-blue-400" x-text="summary.step1_passed?.toLocaleString()"></div>
+                                <div class="text-xs text-gray-500">清洗通过</div>
+                            </div>
+                            <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+                                <div class="text-2xl font-bold text-purple-400" x-text="summary.step3_passed?.toLocaleString()"></div>
+                                <div class="text-xs text-gray-500">有效关键词</div>
+                            </div>
+                            <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+                                <div class="text-2xl font-bold text-green-400" x-text="summary.final_candidates?.toLocaleString()"></div>
+                                <div class="text-xs text-gray-500">候选产品</div>
+                            </div>
+                        </div>
+
+                        <!-- 筛选栏 -->
+                        <div class="flex gap-3 mb-3 flex-wrap items-center">
+                            <input type="text" x-model="filterAsin" placeholder="搜索 ASIN..."
+                                   class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-36">
+                            <input type="text" x-model="filterBrand" placeholder="搜索品牌..."
+                                   class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-32">
+                            <input type="number" x-model="filterPriceMin" placeholder="最低售价"
+                                   class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-28">
+                            <input type="number" x-model="filterPriceMax" placeholder="最高售价"
+                                   class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-28">
+                            <select x-model="sortBy" class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                                <option value="net_repayment">净回款 ↓</option>
+                                <option value="price">售价 ↓</option>
+                                <option value="search_volume">搜索量 ↓</option>
+                                <option value="profit_rate">毛利率 ↓</option>
+                                <option value="ratings_count">评价数 ↓</option>
+                            </select>
+                        </div>
+
+                        <!-- 候选清单表格 -->
+                        <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="bg-gray-700/50 text-gray-400 text-left">
+                                            <th class="py-3 px-4 w-24">#</th>
+                                            <th class="py-3 px-4">ASIN</th>
+                                            <th class="py-3 px-4">品牌</th>
+                                            <th class="py-3 px-4">关键词</th>
+                                            <th class="py-3 px-4 text-right">净回款</th>
+                                            <th class="py-3 px-4 text-right">海运</th>
+                                            <th class="py-3 px-4 text-right">售价</th>
+                                            <th class="py-3 px-4 text-right">毛利率</th>
+                                            <th class="py-3 px-4 text-right">CPC</th>
+                                            <th class="py-3 px-4 text-right">搜索量</th>
+                                            <th class="py-3 px-4 text-right">评价数</th>
+                                            <th class="py-3 px-4">上架日期</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="(c, i) in filteredCandidates" :key="c.asin">
+                                            <tr class="border-t border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                                                <td class="py-2 px-4 text-gray-500 text-xs" x-text="i + 1"></td>
+                                                <td class="py-2 px-4 font-mono text-blue-400 text-xs" x-text="c.asin"></td>
+                                                <td class="py-2 px-4 text-gray-300 max-w-32 truncate" x-text="c.brand || '-'"></td>
+                                                <td class="py-2 px-4">
+                                                    <span class="bg-gray-700 rounded px-2 py-0.5 text-xs" x-text="c.keyword_count + ' 个'"></span>
+                                                </td>
+                                                <td class="py-2 px-4 text-right font-mono">
+                                                    <span :class="c.net_repayment > 0 ? 'text-green-400' : 'text-red-400'"
+                                                          x-text="'$' + c.net_repayment.toFixed(2)"></span>
+                                                </td>
+                                                <td class="py-2 px-4 text-right font-mono text-gray-500 text-xs"
+                                                    x-text="'$' + (c.shipping_cost || 0).toFixed(2)"></td>
+                                                <td class="py-2 px-4 text-right font-mono" x-text="'$' + c.price.toFixed(2)"></td>
+                                                <td class="py-2 px-4 text-right font-mono" x-text="c.profit_rate + '%'"></td>
+                                                <td class="py-2 px-4 text-right font-mono" x-text="'$' + c.cpc.toFixed(2)"></td>
+                                                <td class="py-2 px-4 text-right font-mono" x-text="c.search_volume?.toLocaleString()"></td>
+                                                <td class="py-2 px-4 text-right font-mono" x-text="c.ratings_count?.toLocaleString()"></td>
+                                                <td class="py-2 px-4 text-gray-400 text-xs" x-text="c.online_date || '-'"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div x-show="filteredCandidates.length === 0" class="text-center py-12 text-gray-500">
+                                暂无匹配结果
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+
+</div>
+
+<script>
+function app() {
+    return {
+        stage: 'upload',
+        abaFile: null,
+        running: false,
+        config: { domain: 'CA', conv_index_min: 1.0, share_max: 50, data_expiry_days: 30, ship_cbm_rate: 120, ship_handling: 0.8 },
+        detectedDomain: '',
+
+        // Credentials
+        showCreds: false,
+        creds: { email: '', password: '' },
+        savingCreds: false,
+        credsMsg: '',
+        credsOk: false,
+
+        // Pipeline
+        progress: 0,
+        currentMessage: '',
+        logs: [],
+        pollTimer: null,
+        batchId: '',
+        errorMessage: '',
+
+        // Results
+        candidates: [],
+        summary: {},
+        sortBy: 'net_repayment',
+        filterAsin: '',
+        filterBrand: '',
+        filterPriceMin: '',
+        filterPriceMax: '',
+
+        funnelSteps: [
+            { label: '原始数据', count: 0, removed: 0, status: 'pending' },
+            { label: '转化系数过滤', count: 0, removed: 0, status: 'pending' },
+            { label: '品牌词过滤', count: 0, removed: 0, status: 'pending' },
+            { label: '集中度过滤', count: 0, removed: 0, status: 'pending' },
+            { label: '商机探测器', count: 0, removed: 0, status: 'pending' },
+            { label: '候选产品', count: 0, removed: 0, status: 'pending' },
+        ],
+
+        get filteredCandidates() {
+            let list = this.candidates;
+            if (this.filterAsin) { const q = this.filterAsin.toUpperCase(); list = list.filter(c => c.asin.includes(q)); }
+            if (this.filterBrand) { const q = this.filterBrand.toLowerCase(); list = list.filter(c => (c.brand || '').toLowerCase().includes(q)); }
+            if (this.filterPriceMin) list = list.filter(c => c.price >= parseFloat(this.filterPriceMin));
+            if (this.filterPriceMax) list = list.filter(c => c.price <= parseFloat(this.filterPriceMax));
+            return list.sort((a, b) => (b[this.sortBy] || 0) - (a[this.sortBy] || 0));
+        },
+
+        async init() { await this.loadCreds(); },
+        onFileChange(e) {
+            this.abaFile = e.target.files[0];
+            // 从文件名检测站点
+            if (this.abaFile) {
+                const name = this.abaFile.name.toUpperCase();
+                for (const d of ['US', 'UK', 'DE', 'JP', 'CA']) {
+                    if (name.startsWith(d + '_')) {
+                        this.config.domain = d;
+                        this.detectedDomain = d;
+                        return;
+                    }
+                }
+                this.detectedDomain = '未检测到，默认 CA';
+            }
+        },
+        formatFileSize(bytes) { return (bytes / 1024 / 1024).toFixed(1) + ' MB'; },
+
+        async startAuto() {
+            if (!this.abaFile || this.running) return;
+            this.running = true;
+            this.stage = 'running';
+            this.progress = 0;
+            this.logs = [];
+            this.errorMessage = '';
+            this.funnelSteps.forEach(s => { s.count = 0; s.removed = 0; s.status = 'pending'; });
+
+            const form = new FormData();
+            form.append('file', this.abaFile);
+            form.append('domain', this.config.domain);
+            form.append('conv_index_min', this.config.conv_index_min);
+            form.append('share_max', this.config.share_max);
+            form.append('data_expiry_days', this.config.data_expiry_days);
+            form.append('ship_cbm_rate', this.config.ship_cbm_rate);
+            form.append('ship_handling', this.config.ship_handling);
+
+            try {
+                const resp = await fetch('/api/pipeline/auto-run', { method: 'POST', body: form });
+                const data = await resp.json();
+                if (data.error) { this.stage = 'failed'; this.errorMessage = data.error; this.running = false; return; }
+                if (!data.batch_id) { this.stage = 'failed'; this.errorMessage = '启动失败：服务器未返回批次ID'; this.running = false; return; }
+                this.batchId = data.batch_id;
+                this.pollProgress();
+            } catch (e) {
+                this.stage = 'failed';
+                this.errorMessage = '启动失败: ' + e.message;
+                this.running = false;
+            }
+        },
+
+        async pollProgress() {
+            if (this.pollTimer) clearInterval(this.pollTimer);
+            if (!this.batchId) {
+                this.stage = 'failed';
+                this.errorMessage = '启动失败：未获取到批次ID';
+                this.running = false;
+                return;
+            }
+            let pollCount = 0;
+            let failCount = 0;
+            const MAX_POLLS = 400;   // 10 分钟超时
+            const MAX_FAILS = 5;     // 连续 5 次网络错误即中止
+
+            this.pollTimer = setInterval(async () => {
+                pollCount++;
+                if (pollCount > MAX_POLLS) {
+                    clearInterval(this.pollTimer);
+                    this.running = false;
+                    this.stage = 'failed';
+                    this.errorMessage = '运行超时（超过 10 分钟），请检查浏览器窗口是否有卖家精灵 Chrome 在运行';
+                    return;
+                }
+
+                try {
+                    const resp = await fetch('/api/pipeline/progress/' + this.batchId);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    failCount = 0;  // 成功即重置
+
+                    this.progress = data.percent || 0;
+                    this.currentMessage = data.message || '';
+                    this.logs = data.logs || [];
+                    this.funnelSteps = data.funnel || this.funnelSteps;
+
+                    if (data.status === 'done') {
+                        clearInterval(this.pollTimer);
+                        this.running = false;
+                        this.candidates = data.candidates || [];
+                        this.summary = data.summary || {};
+                        this.stage = 'done';
+                    } else if (data.status === 'failed') {
+                        clearInterval(this.pollTimer);
+                        this.running = false;
+                        this.stage = 'failed';
+                        this.errorMessage = data.error || '运行失败';
+                    } else if (data.status === 'not_found') {
+                        clearInterval(this.pollTimer);
+                        this.running = false;
+                        this.stage = 'failed';
+                        this.errorMessage = '批次丢失，可能是服务器重启了，请重新上传';
+                    }
+                } catch (e) {
+                    failCount++;
+                    if (failCount >= MAX_FAILS) {
+                        clearInterval(this.pollTimer);
+                        this.running = false;
+                        this.stage = 'failed';
+                        this.errorMessage = '连接服务器失败（连续 ' + MAX_FAILS + ' 次），请检查服务器是否在运行';
+                    }
+                }
+            }, 1500);
+        },
+
+        async loadCreds() {
+            try {
+                const resp = await fetch('/api/credentials');
+                const data = await resp.json();
+                this.creds.email = data.email || '';
+            } catch (e) {}
+        },
+        async saveCreds() {
+            if (!this.creds.email || !this.creds.password) {
+                this.credsMsg = '邮箱和密码不能为空';
+                this.credsOk = false;
+                return;
+            }
+            this.savingCreds = true;
+            try {
+                const resp = await fetch('/api/credentials', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.creds),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    this.credsMsg = '已保存';
+                    this.credsOk = true;
+                    this.creds.password = '';
+                } else {
+                    this.credsMsg = data.error || '保存失败';
+                    this.credsOk = false;
+                }
+            } catch (e) {
+                this.credsMsg = '请求失败: ' + e.message;
+                this.credsOk = false;
+            }
+            this.savingCreds = false;
+        },
+
+        exportExcel() { window.location.href = '/export/' + this.batchId; },
+
+        resetApp() {
+            if (this.pollTimer) clearInterval(this.pollTimer);
+            this.stage = 'upload';
+            this.running = false;
+            this.abaFile = null;
+            this.candidates = [];
+            this.summary = {};
+            this.logs = [];
+            this.batchId = '';
+        },
+    }
+}
+</script>
+{% endblock %}

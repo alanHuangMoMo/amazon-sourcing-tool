@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto mt-12">
+    <h1 class="text-2xl font-bold mb-6">选品流程进行中</h1>
+
+    <div class="bg-gray-800 rounded-xl p-8 border border-gray-700"
+         hx-get="/progress/{{ batch_id }}"
+         hx-trigger="every 2s"
+         hx-swap="innerHTML">
+        <!-- 初始加载状态 -->
+        <div class="space-y-4">
+            <div class="text-center text-gray-400">
+                <div class="animate-spin text-4xl mb-4">⏳</div>
+                <p>正在初始化...</p>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-3">
+                <div class="bg-blue-500 h-3 rounded-full skeleton" style="width: 10%"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6 text-center text-sm text-gray-500">
+        批次: {{ batch_id }}
+    </div>
+</div>
+{% endblock %}

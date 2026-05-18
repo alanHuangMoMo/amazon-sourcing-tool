@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: amazon-sourcing-tool
+    runtime: python
+    plan: free
+    buildCommand: cd sourcing-tool && pip install -r requirements.txt
+    startCommand: cd sourcing-tool && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+    autoDeploy: true

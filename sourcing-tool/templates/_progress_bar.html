@@ -1,0 +1,58 @@
+<!-- htmx 片段：进度条 + 日志 -->
+<div class="space-y-4">
+    <!-- 步骤指示器 -->
+    <div class="flex items-center gap-3 mb-4">
+        {% set steps = ["清洗", "倒置", "关键词", "ASIN", "输出"] %}
+        {% for s in steps %}
+            <div class="flex-1 h-1.5 rounded-full
+                {% if step == s or loop.index < (percent / 20)|int %}
+                    bg-blue-500
+                {% else %}
+                    bg-gray-700
+                {% endif %}">
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="text-center">
+        <div class="text-3xl font-bold text-blue-400">{{ percent }}%</div>
+        <p class="text-gray-300 mt-2 text-lg">{{ message }}</p>
+        <p class="text-gray-500 text-sm mt-1">当前步骤: {{ step }}</p>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+        <div class="bg-blue-500 h-3 rounded-full transition-all duration-500"
+             style="width: {{ percent }}%"></div>
+    </div>
+
+    <!-- 日志 -->
+    {% if logs %}
+    <div class="bg-gray-900 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono">
+        {% for log in logs %}
+            <div class="text-gray-500 py-0.5">{{ log }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 完成/失败状态 -->
+    {% if done %}
+        {% if error %}
+            <div class="bg-red-900/30 border border-red-700 rounded-lg p-4 text-center mt-4">
+                <p class="text-red-300 font-medium">流程失败</p>
+                <p class="text-red-400 text-sm mt-1">{{ error }}</p>
+            </div>
+        {% else %}
+            <div class="bg-green-900/30 border border-green-700 rounded-lg p-4 text-center mt-4">
+                <p class="text-green-300 text-lg font-medium">✅ 选品完成!</p>
+                <a href="/results/{{ batch_id }}"
+                   class="inline-block mt-3 px-6 py-2 bg-green-600 hover:bg-green-500
+                          rounded text-white font-medium transition-colors">
+                    查看候选清单 →
+                </a>
+            </div>
+            <!-- 停止 polling -->
+            <div hx-get="/progress/{{ batch_id }}" hx-trigger="none"></div>
+        {% endif %}
+    {% endif %}
+</div>

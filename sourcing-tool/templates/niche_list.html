@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="nicheList()" class="max-w-6xl mx-auto">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← 返回候选清单</a>
+        <span class="text-gray-600">|</span>
+        <span class="text-sm text-gray-400">批次: {{ batch_id }}</span>
+    </div>
+
+    <h1 class="text-2xl font-bold mb-2">Niche 分析</h1>
+    <p class="text-gray-400 text-sm mb-6">按共享关键词聚类，展示同类竞品密度</p>
+
+    <!-- Loading -->
+    <template x-if="loading">
+        <div class="text-center py-12 text-gray-500">
+            <svg class="animate-spin h-8 w-8 mx-auto mb-3" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            分析中...
+        </div>
+    </template>
+
+    <!-- Niche Cards -->
+    <template x-if="!loading">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="n in niches" :key="n.name">
+                <a :href="'/niche/{{ batch_id }}/' + encodeURIComponent(n.name)"
+                   class="bg-gray-800 rounded-xl p-5 border border-gray-700 hover:border-blue-500 transition-colors group">
+                    <div class="flex items-start justify-between mb-3">
+                        <h3 class="text-lg font-bold text-blue-400 group-hover:text-blue-300" x-text="n.name"></h3>
+                        <span class="text-xs bg-gray-700 rounded px-2 py-0.5 text-gray-400" x-text="n.core_count + ' ASINs'"></span>
+                    </div>
+                    <div class="flex gap-4 text-sm text-gray-400 mb-3">
+                        <span x-text="n.keyword_count + ' 关键词'"></span>
+                        <span x-text="'\$' + n.price_min.toFixed(0) + ' - \$' + n.price_max.toFixed(0)"></span>
+                        <span x-text="n.brands.slice(0,3).join(', ')"></span>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                        <template x-for="kw in n.keywords.slice(0,6)" :key="kw">
+                            <span class="text-xs bg-gray-700/50 rounded px-2 py-0.5 text-gray-500" x-text="kw"></span>
+                        </template>
+                        <span x-show="n.keywords.length > 6" class="text-xs text-gray-600" x-text="'+' + (n.keywords.length - 6) + ' more'"></span>
+                    </div>
+                </a>
+            </template>
+        </div>
+    </template>
+
+    <div x-show="!loading && niches.length === 0" class="text-center py-12 text-gray-500">
+        暂无共享关键词的 niche 分组
+    </div>
+</div>
+
+<script>
+function nicheList() {
+    return {
+        niches: [],
+        loading: true,
+        async init() {
+            try {
+                const resp = await fetch('/api/niche/{{ batch_id }}');
+                const data = await resp.json();
+                this.niches = data.niches || [];
+            } catch (e) {
+                console.error(e);
+            }
+            this.loading = false;
+        }
+    }
+}
+</script>
+{% endblock %}

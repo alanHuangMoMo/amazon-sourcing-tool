@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="resultsTable('{{ batch_id }}')">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">候选产品清单</h1>
+            <p class="text-gray-400 text-sm mt-1">
+                {{ candidate_count }} 个候选 ASIN | 批次 {{ batch_id }}
+            </p>
+        </div>
+        <a href="/export/{{ batch_id }}"
+           class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded text-white font-medium transition-colors">
+            📥 导出 Excel
+        </a>
+    </div>
+
+    {% if summary %}
+    <div class="grid grid-cols-5 gap-3 mb-6">
+        <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+            <div class="text-2xl font-bold text-white">{{ summary.total_aba_rows }}</div>
+            <div class="text-xs text-gray-500">原始行数</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+            <div class="text-2xl font-bold text-yellow-400">{{ summary.step1_passed }}</div>
+            <div class="text-xs text-gray-500">清洗通过</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+            <div class="text-2xl font-bold text-blue-400">{{ summary.step3_passed }}</div>
+            <div class="text-xs text-gray-500">有效关键词</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+            <div class="text-2xl font-bold text-green-400">{{ summary.final_candidates }}</div>
+            <div class="text-xs text-gray-500">候选产品</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3 border border-gray-700 text-center">
+            <div class="text-2xl font-bold text-purple-400">{{ summary.sorftime_requests }}</div>
+            <div class="text-xs text-gray-500">API调用</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 筛选栏 -->
+    <div class="flex gap-3 mb-4 flex-wrap">
+        <input type="text" x-model="filterAsin" placeholder="搜索 ASIN..."
+               class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-36">
+        <input type="text" x-model="filterBrand" placeholder="搜索品牌..."
+               class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-32">
+        <input type="number" x-model="filterPriceMin" placeholder="最低售价"
+               class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-28">
+        <input type="number" x-model="filterPriceMax" placeholder="最高售价"
+               class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm w-28">
+        <select x-model="sortBy" @change="fetchData()"
+                class="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm">
+            <option value="net_repayment">按净回款</option>
+            <option value="price">按售价</option>
+            <option value="search_volume">按搜索量</option>
+            <option value="ratings_count">按评价数</option>
+            <option value="profit_rate">按毛利率</option>
+        </select>
+    </div>
+
+    <!-- 表格 -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-700/50 text-gray-400 text-left">
+                        <th class="py-3 px-4 cursor-pointer" @click="sortBy='net_repayment'; fetchData()">净回款 ↓</th>
+                        <th class="py-3 px-4">ASIN</th>
+                        <th class="py-3 px-4">品牌</th>
+                        <th class="py-3 px-4">关联词</th>
+                        <th class="py-3 px-4">转化系数</th>
+                        <th class="py-3 px-4 cursor-pointer" @click="sortBy='price'; fetchData()">售价</th>
+                        <th class="py-3 px-4">毛利率</th>
+                        <th class="py-3 px-4">CPC</th>
+                        <th class="py-3 px-4">搜索量</th>
+                        <th class="py-3 px-4">评价数</th>
+                        <th class="py-3 px-4">上架</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="c in filteredCandidates" :key="c.asin">
+                        <tr class="border-t border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+                            <td class="py-2 px-4">
+                                <span x-bind:class="c.net_repayment > 0 ? 'text-green-400' : 'text-red-400'"
+                                      x-text="'$' + c.net_repayment.toFixed(2)">
+                                </span>
+                            </td>
+                            <td class="py-2 px-4 font-mono text-blue-400" x-text="c.asin"></td>
+                            <td class="py-2 px-4 text-gray-300" x-text="c.brand || '-'"></td>
+                            <td class="py-2 px-4">
+                                <span class="bg-gray-700 rounded px-2 py-0.5 text-xs"
+                                      x-text="c.keyword_count + ' 个'"></span>
+                            </td>
+                            <td class="py-2 px-4 font-mono" x-text="c.avg_conversion_index.toFixed(2)"></td>
+                            <td class="py-2 px-4 font-mono" x-text="'$' + c.price.toFixed(2)"></td>
+                            <td class="py-2 px-4 font-mono" x-text="c.profit_rate + '%'"></td>
+                            <td class="py-2 px-4 font-mono" x-text="'$' + c.cpc.toFixed(2)"></td>
+                            <td class="py-2 px-4 font-mono" x-text="c.search_volume?.toLocaleString()"></td>
+                            <td class="py-2 px-4 font-mono" x-text="c.ratings_count?.toLocaleString()"></td>
+                            <td class="py-2 px-4 text-gray-400" x-text="c.online_date || '-'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div x-show="filteredCandidates.length === 0" class="text-center py-12 text-gray-500">
+            暂无匹配结果
+        </div>
+    </div>
+</div>
+
+<script>
+function resultsTable(batchId) {
+    return {
+        candidates: {{ candidates | tojson }},
+        sortBy: 'net_repayment',
+        filterAsin: '',
+        filterBrand: '',
+        filterPriceMin: '',
+        filterPriceMax: '',
+
+        get filteredCandidates() {
+            let list = this.candidates;
+            if (this.filterAsin) {
+                const q = this.filterAsin.toUpperCase();
+                list = list.filter(c => c.asin.includes(q));
+            }
+            if (this.filterBrand) {
+                const q = this.filterBrand.toLowerCase();
+                list = list.filter(c => (c.brand || '').toLowerCase().includes(q));
+            }
+            if (this.filterPriceMin) {
+                list = list.filter(c => c.price >= parseFloat(this.filterPriceMin));
+            }
+            if (this.filterPriceMax) {
+                list = list.filter(c => c.price <= parseFloat(this.filterPriceMax));
+            }
+            return list.sort((a, b) => {
+                const va = a[this.sortBy] || 0;
+                const vb = b[this.sortBy] || 0;
+                return vb - va;
+            });
+        },
+
+        fetchData() {
+            // 如果数据来自API可在此异步加载，当前用已加载数据
+        }
+    }
+}
+</script>
+{% endblock %}

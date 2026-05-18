@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">配置选品流程</h1>
+
+    <!-- 文件预览 -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-6 border border-gray-700">
+        <h2 class="text-lg font-medium mb-3">📄 {{ filename }}</h2>
+        {% if preview.error %}
+            <div class="bg-red-900/30 border border-red-700 rounded-lg p-4 text-red-300">
+                <strong>解析失败:</strong> {{ preview.error }}
+            </div>
+        {% else %}
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="bg-gray-700/50 rounded p-3">
+                    <span class="text-gray-400">总行数</span>
+                    <span class="text-white font-mono ml-2">{{ preview.rows }}</span>
+                </div>
+                <div class="bg-gray-700/50 rounded p-3">
+                    <span class="text-gray-400">关键词列</span>
+                    <span class="text-green-400 font-mono ml-2">{{ preview.keyword_col }}</span>
+                </div>
+                <div class="bg-gray-700/50 rounded p-3">
+                    <span class="text-gray-400">ASIN 列</span>
+                    <span class="text-blue-400 font-mono ml-2">{{ preview.asin_cols|length }} 个</span>
+                </div>
+                <div class="bg-gray-700/50 rounded p-3">
+                    <span class="text-gray-400">品牌列</span>
+                    <span class="text-yellow-400 font-mono ml-2">{{ preview.brand_cols|length }} 个</span>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- 参数配置 -->
+    <div class="bg-gray-800 rounded-xl p-6 mb-6 border border-gray-700">
+        <h2 class="text-lg font-medium mb-4">筛选参数</h2>
+        <form action="/run" method="post" class="space-y-4">
+            <input type="hidden" name="filepath" value="{{ filepath }}">
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">站点</label>
+                    <select name="domain"
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+                        <option value="1">🇺🇸 美国 (US)</option>
+                        <option value="2">🇬🇧 英国 (UK)</option>
+                        <option value="3">🇩🇪 德国 (DE)</option>
+                        <option value="6">🇯🇵 日本 (JP)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">
+                        转化系数下限
+                        <span class="text-gray-500">(< 此值淘汰)</span>
+                    </label>
+                    <input type="number" name="conv_index_min" value="1.0" step="0.1" min="0"
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">
+                        单份额上限 %
+                        <span class="text-gray-500">(> 此值淘汰)</span>
+                    </label>
+                    <input type="number" name="share_max" value="50" step="1" min="0" max="100"
+                           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">数据模式</label>
+                    <select name="mock"
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+                        <option value="true">🔸 Mock (开发测试, 不消耗次数)</option>
+                        <option value="false">🔴 真实 Sorftime (消耗 API 次数)</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit"
+                    class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg
+                           text-white font-medium text-lg transition-colors">
+                ▶ 开始选品流程
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

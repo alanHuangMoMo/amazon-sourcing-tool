@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>关键词词根筛选器</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+  h1 { font-size: 20px; margin-bottom: 16px; }
+
+  .section { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  /* 上传区域 */
+  .drop-zone {
+    border: 2px dashed #ccc; border-radius: 8px; padding: 40px; text-align: center;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: #4a90d9; background: #f0f6ff; }
+  .drop-zone .icon { font-size: 36px; margin-bottom: 8px; }
+  .drop-zone p { color: #666; font-size: 14px; }
+  .drop-zone .formats { color: #999; font-size: 12px; margin-top: 4px; }
+
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .btn-primary { background: #4a90d9; color: #fff; }
+  .btn-primary:hover { background: #3a7bc8; }
+  .btn-primary:disabled { background: #bbb; cursor: not-allowed; }
+  .btn-outline { background: #fff; color: #4a90d9; border: 1px solid #4a90d9; }
+  .btn-outline:hover { background: #f0f6ff; }
+
+  /* 文件列表 */
+  .file-list { margin-top: 12px; }
+  .file-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: #f9f9f9; border-radius: 4px; margin-bottom: 4px; font-size: 13px;
+  }
+  .file-item .name { flex: 1; }
+  .file-item .size { color: #999; }
+  .file-item .remove { color: #e74c3c; cursor: pointer; font-weight: bold; }
+
+  /* 词根色块 */
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; max-height: 300px; overflow-y: auto; padding: 4px 0; }
+  .chip {
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer;
+    border: 1px solid #ddd; background: #f9f9f9; user-select: none;
+    display: flex; align-items: center; gap: 6px; transition: all 0.15s;
+  }
+  .chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  .chip.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  .chip.hint { background: #fff0f0; color: #c0392b; border-color: #e74c3c; }
+  .chip.muted { opacity: 0.35; }
+  .chip .root-count { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: rgba(0,0,0,0.08); }
+  .chip.active .root-count { background: rgba(255,255,255,0.25); }
+  .chip.hint .root-count { background: rgba(231,76,60,0.12); }
+  .chip .root-pct { font-size: 10px; opacity: 0.7; }
+
+  .chip-legend { display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: #999; flex-wrap: wrap; }
+  .chip-tools { display: flex; gap: 8px; margin-bottom: 8px; }
+
+  /* 统计栏 */
+  .summary-bar { display: flex; gap: 16px; flex-wrap: wrap; }
+  .summary-item {
+    padding: 10px 18px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff; border-radius: 8px; min-width: 100px;
+  }
+  .summary-item .label { font-size: 11px; opacity: 0.85; }
+  .summary-item .value { font-size: 18px; font-weight: 700; }
+
+  /* 表格 */
+  .tbl-wrap { max-height: 500px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid #eee; }
+  th { background: #fafafa; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+  th:first-child, td:first-child { text-align: left; }
+  th:nth-child(2), td:nth-child(2) { text-align: left; }
+  tr:hover { background: #f8faff; }
+  .row-summary { background: #fff9e6 !important; font-weight: 600; }
+  .row-summary td { border-top: 2px solid #f0c040; }
+
+  .match-tags { display: flex; gap: 3px; flex-wrap: wrap; }
+  .match-tag { background: #ffeaa7; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  .empty-state { text-align: center; padding: 40px; color: #999; }
+
+  small { color: #999; font-size: 12px; }
+
+  @media (max-width: 768px) {
+    .container { padding: 10px; }
+    h1 { font-size: 18px; }
+    .drop-zone { padding: 24px 16px; }
+    .drop-zone .icon { font-size: 28px; }
+    .summary-bar { gap: 8px; }
+    .summary-item { padding: 8px 12px; min-width: 70px; }
+    .summary-item .value { font-size: 15px; }
+    .chip { padding: 5px 10px; font-size: 12px; }
+    .tbl-wrap { max-height: 350px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>关键词词根筛选器</h1>
+
+  <!-- 上传区 -->
+  <div class="section" id="uploadSection">
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📂</div>
+      <p>拖拽文件到此处，或点击选择文件</p>
+      <p class="formats">支持 .csv .xlsx .xls，可同时上传多个</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" multiple>
+    <div class="file-list" id="fileList"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-primary" id="btnConfirm" onclick="confirmUpload()" disabled>确定</button>
+      <button class="btn btn-outline" onclick="resetAll()">重置</button>
+      <small id="statusText"></small>
+    </div>
+  </div>
+
+  <!-- 词根区 -->
+  <div class="section" id="rootSection" style="display:none;">
+    <div class="chip-tools">
+      <button class="btn btn-outline" onclick="selectAll()">全选</button>
+      <button class="btn btn-outline" onclick="deselectAll()">取消全选</button>
+      <button class="btn btn-outline" onclick="selectTop(20)">Top 20</button>
+      <button class="btn btn-outline" onclick="selectTop(50)">Top 50</button>
+      <button class="btn btn-primary" onclick="saveTrack()" id="btnSaveTrack" disabled>保留赛道</button>
+      <small>点击色块筛选，多选取交集</small>
+    </div>
+    <div class="chip-legend">
+      <span><span class="chip active" style="display:inline-flex;padding:2px 10px;cursor:default;">已选</span> 交集筛选</span>
+      <span>|</span>
+      <span><span class="chip hint" style="display:inline-flex;padding:2px 10px;cursor:default;">可选</span> 当前结果中还存在的词根</span>
+      <span>|</span>
+      <span><span class="chip muted" style="display:inline-flex;padding:2px 10px;cursor:default;">灰色</span> 当前结果中不存在</span>
+      <span>|</span>
+      <span id="rootSummary"></span>
+    </div>
+    <div class="chip-wrap" id="chipArea"></div>
+  </div>
+
+  <!-- 汇总栏 -->
+  <div class="section" id="summarySection" style="display:none;">
+    <div class="summary-bar" id="summaryBar"></div>
+  </div>
+
+  <!-- 流量赛道一览 -->
+  <div class="section" id="trackSection" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>流量赛道一览</strong>
+      <button class="btn btn-outline" onclick="clearTracks()">清空赛道</button>
+    </div>
+    <div class="tbl-wrap">
+      <table id="trackTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- 结果表格 -->
+  <div class="section" id="resultSection" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong id="resultCount"></strong>
+      <button class="btn btn-outline" onclick="exportCSV()">导出 CSV</button>
+    </div>
+    <div class="tbl-wrap">
+      <table id="resultTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== 常量 ======
+const DISPLAY_COLS = ['关键词','关键词翻译','月搜索量','月购买量','购买率','展示量','点击量','商品数','广告竞品数','点击总占比','转化总占比','PPC竞价','建议竞价范围','均价','评分数','评分值'];
+const SUM_COLS = ['月搜索量','月购买量','展示量','点击量'];
+
+const STOP_WORDS = new Set([
+  'a','an','the','is','are','was','were','be','been','being',
+  'have','has','had','having','do','does','did','doing',
+  'will','would','shall','should','can','could','may','might','must',
+  'i','me','my','we','our','us','you','your','he','she','it','its',
+  'they','them','their','this','that','these','those',
+  'in','on','at','to','for','of','with','by','from',
+  'and','or','but','not','no','nor','if','so','as','than',
+  'also','too','very','just','about','up','out','down','off','over','under',
+  'again','all','each','every','both','few','more','most',
+  'other','some','such','only','own','same','new','now',
+  'then','here','there','when','where','why','how','which','who','what','whom',
+  'one','two','three','first','last','get','got','go','going',
+  'into','onto','after','before','during','without','within',
+  'per','like','much','many','any','been','still','well',
+  'back','also','even','already','yet'
+]);
+
+// ====== 状态 ======
+let allRows = [];     // 所有已映射行（仅保留 DISPLAY_COLS 对应列 + 原始关键词索引）
+let colIndex = {};    // 列名 -> 数组下标
+let rawHeaders = [];  // 原始表头
+let rawData = [];     // parse 后的原始数据 [{cols: [], keywordIdx: N}]
+let roots = [];       // [{word, count, pct}]
+let activeRoots = new Set();
+
+// ====== 拖拽上传 ======
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+let pendingFiles = []; // [{name, size, data: ArrayBuffer}]
+let tracks = [];       // [{roots: ['word1','word2'], title: 'word1+word2', count: N, sums: {col: val}}]
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => {
+  handleFiles(e.target.files);
+  fileInput.value = '';
+});
+
+function handleFiles(files) {
+  if (!files || files.length === 0) return;
+  for (const f of files) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (!['csv','xlsx','xls'].includes(ext)) { alert(f.name + ' 格式不支持，请上传 CSV/Excel'); continue; }
+    // 去重
+    if (pendingFiles.some(pf => pf.name === f.name && pf.size === f.size)) continue;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      pendingFiles.push({ name: f.name, size: f.size, data: ev.target.result });
+      renderFileList();
+    };
+    reader.readAsArrayBuffer(f);
+  }
+}
+
+function renderFileList() {
+  fileList.innerHTML = pendingFiles.map((f, i) => `
+    <div class="file-item">
+      <span class="name">${f.name}</span>
+      <span class="size">${formatSize(f.size)}</span>
+      <span class="remove" onclick="removeFile(${i})">✕</span>
+    </div>
+  `).join('');
+  document.getElementById('btnConfirm').disabled = pendingFiles.length === 0;
+  document.getElementById('statusText').textContent = pendingFiles.length ? `${pendingFiles.length} 个文件待处理` : '';
+}
+
+function removeFile(i) { pendingFiles.splice(i, 1); renderFileList(); }
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+// ====== 解析文件 ======
+function confirmUpload() {
+  if (pendingFiles.length === 0) return;
+  document.getElementById('statusText').textContent = '解析中...';
+
+  rawData = [];
+  rawHeaders = [];
+
+  for (const pf of pendingFiles) {
+    const ext = pf.name.split('.').pop().toLowerCase();
+    let data;
+    try {
+      if (ext === 'csv') {
+        data = parseCSV(new TextDecoder().decode(pf.data));
+      } else {
+        data = parseExcel(pf.data);
+      }
+    } catch (e) {
+      alert(pf.name + ' 解析失败: ' + e.message);
+      continue;
+    }
+    if (data.headers.length === 0) continue;
+    if (rawHeaders.length === 0) {
+      rawHeaders = data.headers;
+    } else if (JSON.stringify(rawHeaders) !== JSON.stringify(data.headers)) {
+      alert(pf.name + ' 表头与第一个文件不一致，跳过');
+      continue;
+    }
+    rawData.push(...data.rows);
+  }
+
+  if (rawData.length === 0) { alert('没有有效数据'); return; }
+
+  // 映射列索引
+  colIndex = {};
+  for (const col of DISPLAY_COLS) {
+    const idx = rawHeaders.indexOf(col);
+    if (idx >= 0) colIndex[col] = idx;
+  }
+  if (!('关键词' in colIndex)) {
+    alert('找不到"关键词"列，请确认文件格式');
+    return;
+  }
+
+  document.getElementById('statusText').textContent =
+    `已加载 ${rawData.length} 条记录，${rawHeaders.length} 列`;
+
+  // 提取词根
+  extractRoots();
+  activeRoots = new Set(); // 默认不选任何词根 = 显示全部
+
+  // 显示结果区
+  document.getElementById('rootSection').style.display = '';
+  document.getElementById('summarySection').style.display = '';
+  document.getElementById('resultSection').style.display = '';
+  render();
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    rows.push(cells);
+  }
+  return { headers, rows };
+}
+
+function parseExcel(buffer) {
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (json.length < 2) return { headers: [], rows: [] };
+  const headers = json[0].map(h => String(h).trim());
+  const rows = json.slice(1);
+  return { headers, rows };
+}
+
+// ====== 词根提取 ======
+function extractRoots() {
+  const kwIdx = colIndex['关键词'];
+  const total = rawData.length;
+  const countMap = {};
+
+  rawData.forEach(row => {
+    const kw = String(row[kwIdx] || '').toLowerCase().trim();
+    // 按非字母拆分
+    const words = kw.split(/[^a-z]+/).filter(w => w.length >= 2 && !STOP_WORDS.has(w));
+    const seen = new Set(words);
+    seen.forEach(w => { countMap[w] = (countMap[w] || 0) + 1; });
+  });
+
+  roots = Object.entries(countMap)
+    .map(([word, count]) => ({ word, count, pct: (count / total * 100).toFixed(1) }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ====== 渲染 ======
+function render() {
+  renderChips();
+  renderSummary();
+  renderTable();
+  renderTracks();
+  // 有已选词根时启用保留赛道按钮
+  document.getElementById('btnSaveTrack').disabled = activeRoots.size === 0;
+}
+
+// ====== 色块区 ======
+function renderChips() {
+  const area = document.getElementById('chipArea');
+  document.getElementById('rootSummary').textContent =
+    `共 ${roots.length} 个词根 | ${activeRoots.size} 个已选 | 总关键词 ${rawData.length} 条`;
+
+  if (roots.length === 0) { area.innerHTML = '<div class="empty-state">无词根数据</div>'; return; }
+
+  // 计算当前结果中所有存在的词根（用于 KTV 式高亮）
+  const filtered = getFilteredRows();
+  const kwIdx = colIndex['关键词'];
+  const availableWords = new Set();
+  if (activeRoots.size > 0) {
+    filtered.forEach(row => {
+      const kw = String(row[kwIdx] || '').toLowerCase();
+      const words = kw.split(/[^a-z]+/).filter(w => w.length >= 2 && !STOP_WORDS.has(w));
+      words.forEach(w => availableWords.add(w));
+    });
+  }
+
+  area.innerHTML = roots.map(r => {
+    const active = activeRoots.has(r.word);
+    let cls = '';
+    if (active) {
+      cls = ' active';
+    } else if (activeRoots.size > 0) {
+      cls = availableWords.has(r.word) ? ' hint' : ' muted';
+    }
+    return `<span class="chip${cls}"
+          onclick="toggleRoot('${r.word}')">
+      ${r.word}
+      <span class="root-count">${r.count}</span>
+      <span class="root-pct">${r.pct}%</span>
+    </span>`;
+  }).join('');
+}
+
+function toggleRoot(word) {
+  if (activeRoots.has(word)) activeRoots.delete(word);
+  else activeRoots.add(word);
+  render();
+}
+
+function selectAll() { activeRoots = new Set(roots.map(r => r.word)); render(); }
+function deselectAll() { activeRoots = new Set(); render(); }
+function selectTop(n) {
+  activeRoots = new Set(roots.slice(0, n).map(r => r.word));
+  render();
+}
+
+// ====== 汇总栏 ======
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  const filtered = getFilteredRows();
+
+  bar.innerHTML = `
+    <div class="summary-item">
+      <div class="label">匹配关键词</div>
+      <div class="value">${filtered.length}</div>
+    </div>
+  ` + SUM_COLS.filter(c => c in colIndex).map(col => {
+    const sum = filtered.reduce((s, r) => {
+      const v = parseNum(r[colIndex[col]]);
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+    return `<div class="summary-item">
+      <div class="label">${col} 合计</div>
+      <div class="value">${fmtNum(sum)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ====== 表格 ======
+function renderTable() {
+  const filtered = getFilteredRows();
+  const section = document.getElementById('resultSection');
+  if (filtered.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  document.getElementById('resultCount').textContent = `共 ${filtered.length} 条`;
+
+  const thead = document.querySelector('#resultTable thead');
+  const tbody = document.querySelector('#resultTable tbody');
+
+  const displayCols = DISPLAY_COLS.filter(c => c in colIndex);
+  thead.innerHTML = '<tr><th>#</th>' + displayCols.map(c => `<th>${c}</th>`).join('') +
+    (activeRoots.size < roots.length ? '<th>命中词根</th>' : '') + '</tr>';
+
+  const kwIdx = colIndex['关键词'];
+
+  tbody.innerHTML = filtered.map((row, idx) => {
+    const cells = displayCols.map(c => {
+      const ci = colIndex[c];
+      const v = row[ci];
+      return `<td>${formatCell(v, c)}</td>`;
+    }).join('');
+    let badgeCol = '';
+    if (activeRoots.size < roots.length) {
+      const kw = String(row[kwIdx] || '').toLowerCase();
+      const matched = [...activeRoots].filter(r => kw.split(/[^a-z]+/).includes(r));
+      badgeCol = `<td><div class="match-tags">${matched.map(r => `<span class="match-tag">${r}</span>`).join('')}</div></td>`;
+    }
+    return `<tr><td>${idx + 1}</td>${cells}${badgeCol}</tr>`;
+  }).join('');
+}
+
+function formatCell(v, colName) {
+  if (v === undefined || v === null || v === '') return '-';
+  const s = String(v).trim();
+  if (['购买率','点击总占比','转化总占比'].includes(colName)) {
+    const n = parseFloat(s);
+    if (!isNaN(n)) return (n * 100).toFixed(2) + '%';
+  }
+  return s;
+}
+
+function parseNum(v) {
+  if (v === undefined || v === null || v === '') return NaN;
+  const s = String(v).replace(/[$,%]/g, '').trim();
+  return parseFloat(s);
+}
+
+function fmtNum(n) {
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return Math.round(n * 100) / 100;
+}
+
+// ====== 筛选 ======
+function getFilteredRows() {
+  if (activeRoots.size === 0 || activeRoots.size === roots.length) return rawData;
+  const kwIdx = colIndex['关键词'];
+  return rawData.filter(row => {
+    const kw = String(row[kwIdx] || '').toLowerCase();
+    const words = new Set(kw.split(/[^a-z]+/));
+    return [...activeRoots].every(r => words.has(r));
+  });
+}
+
+// ====== 导出 ======
+function exportCSV() {
+  const filtered = getFilteredRows();
+  if (filtered.length === 0) return alert('无数据可导出');
+  const displayCols = DISPLAY_COLS.filter(c => c in colIndex);
+  let csv = displayCols.join(',') + '\n';
+  csv += filtered.map(row => displayCols.map(c => {
+    const v = row[colIndex[c]];
+    return typeof v === 'string' && v.includes(',') ? '"' + v + '"' : v;
+  }).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'keyword_filtered.csv';
+  a.click();
+}
+
+// ====== 赛道 ======
+function saveTrack() {
+  if (activeRoots.size === 0) return;
+  const sorted = [...activeRoots].sort();
+  const title = sorted.join('+');
+  const filtered = getFilteredRows();
+
+  const sums = {};
+  SUM_COLS.filter(c => c in colIndex).forEach(col => {
+    sums[col] = filtered.reduce((s, r) => {
+      const v = parseNum(r[colIndex[col]]);
+      return s + (isNaN(v) ? 0 : v);
+    }, 0);
+  });
+
+  // 去重：同标题覆盖
+  const existIdx = tracks.findIndex(t => t.title === title);
+  const entry = { roots: sorted, title, count: filtered.length, sums };
+  if (existIdx >= 0) {
+    tracks[existIdx] = entry;
+  } else {
+    tracks.push(entry);
+  }
+  renderTracks();
+}
+
+function deleteTrack(idx) {
+  tracks.splice(idx, 1);
+  renderTracks();
+}
+
+function clearTracks() {
+  tracks = [];
+  renderTracks();
+}
+
+function renderTracks() {
+  const section = document.getElementById('trackSection');
+  const tbody = document.querySelector('#trackTable tbody');
+  const thead = document.querySelector('#trackTable thead');
+
+  if (tracks.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const sumCols = SUM_COLS.filter(c => c in colIndex);
+  thead.innerHTML = '<tr><th>赛道名称</th><th>关键词数</th>' +
+    sumCols.map(c => `<th>${c}合计</th>`).join('') +
+    '<th>操作</th></tr>';
+
+  tbody.innerHTML = tracks.map((t, i) => {
+    const cells = sumCols.map(c => `<td>${fmtNum(t.sums[c])}</td>`).join('');
+    return `<tr>
+      <td><strong>${t.title}</strong> <small>(${t.roots.length}个词根)</small></td>
+      <td>${t.count}</td>
+      ${cells}
+      <td><span style="color:#e74c3c;cursor:pointer;font-weight:bold;" onclick="deleteTrack(${i})">删除</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ====== 重置 ======
+function resetAll() {
+  pendingFiles = [];
+  rawData = [];
+  rawHeaders = [];
+  roots = [];
+  activeRoots = new Set();
+  colIndex = {};
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('btnConfirm').disabled = true;
+  document.getElementById('statusText').textContent = '';
+  tracks = [];
+  document.getElementById('rootSection').style.display = 'none';
+  document.getElementById('summarySection').style.display = 'none';
+  document.getElementById('resultSection').style.display = 'none';
+  document.getElementById('trackSection').style.display = 'none';
+  document.getElementById('chipArea').innerHTML = '';
+  document.getElementById('btnSaveTrack').disabled = true;
+}
+</script>
+</body>
+</html>

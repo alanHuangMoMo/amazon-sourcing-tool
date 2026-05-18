@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto mt-16">
+    <h1 class="text-2xl font-bold mb-2">亚马逊选品 SOP 自动化</h1>
+    <p class="text-gray-400 mb-8">
+        上传亚马逊 ABA 报表 → 自动清洗过滤 → Sorftime 补数据 → 候选产品清单
+    </p>
+
+    <div x-data="uploadForm()" class="bg-gray-800 rounded-xl p-8 border border-gray-700">
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <div
+                x-ref="dropzone"
+                @dragover.prevent="$refs.dropzone.classList.add('border-blue-400')"
+                @dragleave.prevent="$refs.dropzone.classList.remove('border-blue-400')"
+                @drop.prevent="handleDrop($event)"
+                class="border-2 border-dashed border-gray-600 rounded-lg p-12 text-center
+                       cursor-pointer hover:border-gray-400 transition-colors"
+            >
+                <template x-if="!filename">
+                    <div>
+                        <div class="text-4xl mb-4">📁</div>
+                        <p class="text-gray-300 font-medium">拖拽 ABA 报表到此处</p>
+                        <p class="text-gray-500 text-sm mt-2">支持 .xlsx .xls .csv</p>
+                        <input type="file" name="file" accept=".xlsx,.xls,.csv"
+                               @change="handleFile($event)" class="hidden" x-ref="fileInput">
+                        <button type="button" @click="$refs.fileInput.click()"
+                                class="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600
+                                       rounded text-sm transition-colors">
+                            选择文件
+                        </button>
+                    </div>
+                </template>
+                <template x-if="filename">
+                    <div>
+                        <div class="text-3xl mb-3">✅</div>
+                        <p class="text-green-400 font-medium" x-text="filename"></p>
+                        <p class="text-gray-500 text-sm mt-1" x-text="filesize"></p>
+                        <button type="submit"
+                                class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500
+                                       rounded text-white font-medium transition-colors">
+                            上传并配置
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </form>
+    </div>
+
+    <div class="mt-8 bg-gray-800/50 rounded-lg p-6 border border-gray-700/50 text-sm text-gray-400">
+        <h3 class="text-gray-300 font-medium mb-3">ABA 报表格式要求</h3>
+        <table class="w-full text-left">
+            <thead>
+                <tr class="text-gray-500 border-b border-gray-700">
+                    <th class="py-2 pr-4">列</th>
+                    <th class="py-2">说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b border-gray-700/50">
+                    <td class="py-2 pr-4 text-gray-300">关键词</td>
+                    <td>搜索词，如 "yoga mat"</td>
+                </tr>
+                <tr class="border-b border-gray-700/50">
+                    <td class="py-2 pr-4 text-gray-300">ASIN #1 / #2 / #3</td>
+                    <td>Top 3 竞品 ASIN</td>
+                </tr>
+                <tr class="border-b border-gray-700/50">
+                    <td class="py-2 pr-4 text-gray-300">点击份额 #1 / #2 / #3</td>
+                    <td>百分比数值，如 40.41</td>
+                </tr>
+                <tr class="border-b border-gray-700/50">
+                    <td class="py-2 pr-4 text-gray-300">转化份额 #1 / #2 / #3</td>
+                    <td>百分比数值，如 12.31</td>
+                </tr>
+                <tr>
+                    <td class="py-2 pr-4 text-gray-300">品牌 #1 / #2 / #3</td>
+                    <td>Top 3 点击品牌名</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function uploadForm() {
+    return {
+        filename: '',
+        filesize: '',
+        handleFile(e) {
+            const f = e.target.files[0];
+            if (f) {
+                this.filename = f.name;
+                this.filesize = (f.size / 1024).toFixed(1) + ' KB';
+            }
+        },
+        handleDrop(e) {
+            const f = e.dataTransfer.files[0];
+            if (f) {
+                this.filename = f.name;
+                this.filesize = (f.size / 1024).toFixed(1) + ' KB';
+                const dt = new DataTransfer();
+                dt.items.add(f);
+                this.$refs.fileInput.files = dt.files;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

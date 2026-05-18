@@ -1,0 +1,219 @@
+{
+  "n_keywords": 600,
+  "n_roots": 100,
+  "n_communities": 12,
+  "communities": {
+    "comm_95": {
+      "roots": [
+        "day",
+        "women",
+        "gift",
+        "gifts",
+        "mothers"
+      ],
+      "top_roots": [
+        "gifts",
+        "women",
+        "day",
+        "mothers",
+        "gift"
+      ],
+      "n_keywords": 141,
+      "total_search_volume": 954804,
+      "total_sales_90d": 2105,
+      "avg_cpc": 136.45,
+      "avg_conv_rate": 0.1829,
+      "demand_intensity": 5.5
+    },
+    "comm_73": {
+      "roots": [
+        "stanley",
+        "mug",
+        "mugs",
+        "cup",
+        "coffee",
+        "photo"
+      ],
+      "top_roots": [
+        "mug",
+        "coffee",
+        "mugs",
+        "photo",
+        "cup",
+        "stanley"
+      ],
+      "n_keywords": 181,
+      "total_search_volume": 643371,
+      "total_sales_90d": 6719,
+      "avg_cpc": 127.51,
+      "avg_conv_rate": 0.45,
+      "demand_intensity": 4.7
+    },
+    "comm_32": {
+      "roots": [
+        "men",
+        "shirts"
+      ],
+      "top_roots": [
+        "shirts",
+        "men"
+      ],
+      "n_keywords": 74,
+      "total_search_volume": 590371,
+      "total_sales_90d": 495,
+      "avg_cpc": 116.51,
+      "avg_conv_rate": 0.1364,
+      "demand_intensity": 5.4
+    },
+    "comm_91": {
+      "roots": [
+        "foto",
+        "personalizadas",
+        "playeras",
+        "con",
+        "vaso",
+        "tazas",
+        "personalizada",
+        "fotos",
+        "camisa",
+        "mujer",
+        "personalizados",
+        "camisetas",
+        "vasos",
+        "cafe",
+        "camisas",
+        "taza",
+        "personalizado",
+        "hombre",
+        "para",
+        "de",
+        "termo",
+        "personalizar",
+        "termos",
+        "regalos"
+      ],
+      "top_roots": [
+        "para",
+        "personalizadas",
+        "mujer",
+        "personalizados",
+        "tazas",
+        "personalizada",
+        "personalizado",
+        "taza"
+      ],
+      "n_keywords": 63,
+      "total_search_volume": 97283,
+      "total_sales_90d": 30,
+      "avg_cpc": 95.92,
+      "avg_conv_rate": 0.0489,
+      "demand_intensity": 2.7
+    },
+    "comm_68": {
+      "roots": [
+        "tshirt",
+        "print"
+      ],
+      "top_roots": [
+        "tshirt",
+        "print"
+      ],
+      "n_keywords": 30,
+      "total_search_volume": 72156,
+      "total_sales_90d": 17,
+      "avg_cpc": 112.46,
+      "avg_conv_rate": 0.035,
+      "demand_intensity": 0.8
+    },
+    "comm_80": {
+      "roots": [
+        "kids",
+        "image",
+        "merch",
+        "amazon",
+        "demand"
+      ],
+      "top_roots": [
+        "kids",
+        "merch",
+        "demand",
+        "image",
+        "amazon"
+      ],
+      "n_keywords": 13,
+      "total_search_volume": 35661,
+      "total_sales_90d": 0,
+      "avg_cpc": 123.55,
+      "avg_conv_rate": 0,
+      "demand_intensity": 0.4
+    },
+    "comm_88": {
+      "roots": [
+        "unisex",
+        "tshirts"
+      ],
+      "top_roots": [
+        "tshirts",
+        "unisex"
+      ],
+      "n_keywords": 11,
+      "total_search_volume": 31942,
+      "total_sales_90d": 4,
+      "avg_cpc": 103.3,
+      "avg_conv_rate": 0.03,
+      "demand_intensity": 0.3
+    },
+    "comm_92": {
+      "roots": [
+        "tumblers",
+        "names",
+        "name"
+      ],
+      "top_roots": [
+        "tumblers",
+        "name",
+        "names"
+      ],
+      "n_keywords": 18,
+      "total_search_volume": 27576,
+      "total_sales_90d": 29,
+      "avg_cpc": 105.41,
+      "avg_conv_rate": 0.055,
+      "demand_intensity": 0.2
+    },
+    "comm_66": {
+      "roots": [
+        "face",
+        "girlfriend"
+      ],
+      "top_roots": [
+        "face",
+        "girlfriend"
+      ],
+      "n_keywords": 8,
+      "total_search_volume": 16091,
+      "total_sales_90d": 0,
+      "avg_cpc": 99.62,
+      "avg_conv_rate": 0,
+      "demand_intensity": 0.4
+    },
+    "comm_54": {
+      "roots": [
+        "glass",
+        "wine",
+        "glasses"
+      ],
+      "top_roots": [
+        "wine",
+        "glass",
+        "glasses"
+      ],
+      "n_keywords": 9,
+      "total_search_volume": 10030,
+      "total_sales_90d": 429,
+      "avg_cpc": 110.11,
+      "avg_conv_rate": 0.6012,
+      "demand_intensity": 0.1
+    }
+  }
+}

@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div x-data="dashboard" x-init="init()" class="space-y-6">
+
+    <!-- ═══════════ Stage 指示器 ═══════════ -->
+    <div class="flex items-center gap-2 text-sm">
+        <template x-for="(s, i) in stages" :key="i">
+            <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                      :class="stage === s.key ? 'bg-blue-600 text-white' : (doneStages.has(s.key) ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400')"
+                      x-text="i + 1"></span>
+                <span class="hidden sm:inline" x-text="s.label"></span>
+                <template x-if="i < stages.length - 1">
+                    <span class="text-gray-600 mx-1">→</span>
+                </template>
+            </div>
+        </template>
+    </div>
+
+    <!-- ═══════════ Stage 1: 装关键词数据 ═══════════ -->
+    <div x-show="stage === 'upload_kw'" class="bg-gray-800 rounded-xl p-6 space-y-4 max-w-xl">
+        <h2 class="text-xl font-semibold">Step 1: 装载关键词历史数据</h2>
+        <p class="text-gray-400 text-sm">上传卖家精灵「关键词挖掘」导出的 Excel 文件</p>
+        <div class="flex gap-3">
+            <input type="file" id="kwFile" accept=".xlsx,.xls" class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white file:text-sm file:cursor-pointer" />
+            <select x-model="domain" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm">
+                <option value="US">US</option>
+                <option value="CA">CA</option>
+                <option value="UK">UK</option>
+            </select>
+            <button @click="uploadKeywords()" :disabled="uploading"
+                    class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm font-medium">
+                <span x-show="!uploading">上传</span>
+                <span x-show="uploading">处理中...</span>
+            </button>
+        </div>
+        <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
+    </div>
+
+    <!-- ═══════════ Stage 2: 提取 ASIN ═══════════ -->
+    <div x-show="stage === 'asins'" class="bg-gray-800 rounded-xl p-6 space-y-4">
+        <h2 class="text-xl font-semibold">Step 2: 去重 ASIN 提取</h2>
+        <p class="text-gray-400 text-sm">
+            已从 <span x-text="asinTotal" class="text-white font-medium"></span> 个不重复 ASIN 中提取。
+            复制全部 ASIN → 粘贴到卖家精灵产品库 → 导出 Excel。
+        </p>
+        <div class="flex gap-2 mb-2">
+            <button @click="copyAsins()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm"
+                    x-text="copied ? '已复制' : '一键复制全部 ASIN'"></button>
+            <button @click="stage='upload_prod'" class="bg-gray-600 hover:bg-gray-500 px-4 py-1.5 rounded text-sm">
+                已完成复制，下一步 →
+            </button>
+        </div>
+        <textarea readonly x-model="asinText" rows="8"
+                  class="w-full bg-gray-900 border border-gray-600 rounded p-3 text-xs text-gray-300 font-mono resize-none"></textarea>
+    </div>
+
+    <!-- ═══════════ Stage 3: 装 ASIN 数据 ═══════════ -->
+    <div x-show="stage === 'upload_prod'" class="bg-gray-800 rounded-xl p-6 space-y-4 max-w-xl">
+        <h2 class="text-xl font-semibold">Step 3: 装载 ASIN 历史数据</h2>
+        <p class="text-gray-400 text-sm">上传卖家精灵「产品库」导出的 Excel 文件</p>
+        <div class="flex gap-3">
+            <input type="file" id="prodFile" accept=".xlsx,.xls" class="text-sm text-gray-300 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-0 file:bg-green-600 file:text-white file:text-sm file:cursor-pointer" />
+            <button @click="uploadProducts()" :disabled="uploading"
+                    class="bg-green-600 hover:bg-green-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm font-medium">
+                <span x-show="!uploading">上传</span>
+                <span x-show="uploading">处理中...</span>
+            </button>
+        </div>
+        <div x-show="uploadMsg" x-text="uploadMsg" :class="uploadOk ? 'text-green-400' : 'text-red-400'" class="text-sm"></div>
+        <button x-show="prodLoaded" @click="enterFilter()"
+                class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded text-sm">进入词根看板 →</button>
+    </div>
+
+    <!-- ═══════════ Stage 4: 词根筛选 + 赛道看板 ═══════════ -->
+    <div x-show="stage === 'filter'" x-cloak class="space-y-4">
+
+        <!-- 词根 Chip 区域 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold">词根筛选 <span class="text-gray-500" x-text="'(' + roots.length + ' 个词根)'"></span></h3>
+                <div class="flex gap-1 flex-wrap">
+                    <button @click="selectAllRoots()" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">全选</button>
+                    <button @click="deselectAllRoots()" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">取消</button>
+                    <button @click="selectTopRoots(20)" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Top 20</button>
+                    <button @click="selectTopRoots(50)" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Top 50</button>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 max-h-60 overflow-y-auto" id="chipWrap">
+                <template x-for="r in roots" :key="r.word">
+                    <button @click="toggleRoot(r.word)"
+                            class="chip px-2 py-0.5 rounded text-xs font-medium transition-colors border whitespace-nowrap"
+                            :class="getChipClass(r.word)"
+                            x-text="r.word + ' (' + r.frequency + ')'"></button>
+                </template>
+            </div>
+            <div class="flex gap-3 text-xs text-gray-500 mt-2">
+                <span><span class="inline-block w-3 h-3 rounded bg-blue-600 mr-1"></span>已选</span>
+                <span><span class="inline-block w-3 h-3 rounded border border-red-500 bg-transparent mr-1"></span>结果中存在</span>
+                <span><span class="inline-block w-3 h-3 rounded bg-gray-700 mr-1"></span>不存在</span>
+            </div>
+        </div>
+
+        <!-- 统计摘要 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold mb-2">赛道概览</h3>
+            <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-center">
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-blue-400" x-text="fmtNum(summary.keyword_count)"></div><div class="text-xs text-gray-400">关键词</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-green-400" x-text="fmtNum(summary.asin_count)"></div><div class="text-xs text-gray-400">ASIN</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-yellow-400" x-text="fmtNum(summary.total_sv)"></div><div class="text-xs text-gray-400">月搜索量</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-orange-400" x-text="'$' + summary.avg_cpc"></div><div class="text-xs text-gray-400">平均 CPC</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-purple-400" x-text="'$' + summary.avg_price"></div><div class="text-xs text-gray-400">平均售价</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-cyan-400" x-text="fmtNum(summary.total_monthly_sales)"></div><div class="text-xs text-gray-400">总月销</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-pink-400" x-text="'$' + fmtNum(summary.total_monthly_revenue)"></div><div class="text-xs text-gray-400">总月销额</div></div>
+                <div class="bg-gray-700 rounded-lg p-2"><div class="text-lg font-bold text-white" x-text="fmtNum(summary.total_purchases)"></div><div class="text-xs text-gray-400">月购买量</div></div>
+            </div>
+        </div>
+
+        <!-- 数据表 Tab 切换 -->
+        <div class="bg-gray-800 rounded-xl overflow-hidden">
+            <div class="flex border-b border-gray-700">
+                <button @click="activeTab = 'keywords'" class="px-4 py-2 text-sm font-medium"
+                        :class="activeTab === 'keywords' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-gray-200'">
+                    关键词视图 (<span x-text="summary.keyword_count"></span>)
+                </button>
+                <button @click="activeTab = 'asins'" class="px-4 py-2 text-sm font-medium"
+                        :class="activeTab === 'asins' ? 'bg-gray-700 text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-gray-200'">
+                    ASIN 视图 (<span x-text="summary.asin_count"></span>)
+                </button>
+            </div>
+
+            <!-- 关键词表 -->
+            <div x-show="activeTab === 'keywords'" class="overflow-x-auto" style="max-height:70vh; overflow-y:auto;">
+                <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-gray-750">
+                        <tr class="text-gray-400">
+                            <th class="px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortKw('keyword')">关键词</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('search_volume')">月搜索量</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('purchases')">月购买</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('purchase_rate')">购买率%</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('cpc')">CPC</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('avg_price')">均价</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('click_share')">点击占比%</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('conv_share')">转化占比%</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('product_count')">产品数</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortKw('rating')">评分</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="k in sortedKeywords" :key="k.keyword">
+                            <tr class="border-t border-gray-700 hover:bg-gray-750">
+                                <td class="px-3 py-1.5">
+                                    <span class="text-blue-300" x-text="k.keyword"></span>
+                                    <span class="text-gray-500 ml-1" x-text="k.keyword_cn"></span>
+                                </td>
+                                <td class="px-3 py-1.5 text-right" x-text="fmtNum(k.search_volume)"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="fmtNum(k.purchases)"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="k.purchase_rate + '%'"></td>
+                                <td class="px-3 py-1.5 text-right text-yellow-400" x-text="'$' + k.cpc"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="'$' + k.avg_price"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="k.click_share + '%'"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="k.conv_share + '%'"></td>
+                                <td class="px-3 py-1.5 text-right text-gray-500" x-text="fmtNum(k.product_count)"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="k.rating"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div x-show="sortedKeywords.length === 0" class="text-center text-gray-500 py-8">暂无匹配关键词</div>
+            </div>
+
+            <!-- ASIN 表 -->
+            <div x-show="activeTab === 'asins'" class="overflow-x-auto" style="max-height:70vh; overflow-y:auto;">
+                <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-gray-750">
+                        <tr class="text-gray-400">
+                            <th class="px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('asin')">ASIN</th>
+                            <th class="px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('title')">标题</th>
+                            <th class="px-3 py-2 text-left cursor-pointer hover:text-white" @click="sortAsin('brand')">品牌</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('price')">价格</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('monthly_sales')">月销量</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('monthly_revenue')">月销额</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('bsr')">BSR</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('ratings')">评分</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('ratings_count')">评分数</th>
+                            <th class="px-3 py-2 text-right cursor-pointer hover:text-white" @click="sortAsin('online_days')">上架天数</th>
+                            <th class="px-3 py-2 text-center cursor-pointer hover:text-white" @click="sortAsin('is_fba')">FBA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="a in sortedAsins" :key="a.asin">
+                            <tr class="border-t border-gray-700 hover:bg-gray-750">
+                                <td class="px-3 py-1.5 text-green-400 font-mono text-xs" x-text="a.asin"></td>
+                                <td class="px-3 py-1.5 max-w-xs truncate" :title="a.title" x-text="a.title"></td>
+                                <td class="px-3 py-1.5 text-gray-400" x-text="a.brand"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="'$' + a.price"></td>
+                                <td class="px-3 py-1.5 text-right font-medium" x-text="fmtNum(a.monthly_sales)"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="'$' + fmtNum(a.monthly_revenue)"></td>
+                                <td class="px-3 py-1.5 text-right text-gray-400" x-text="fmtNum(a.bsr)"></td>
+                                <td class="px-3 py-1.5 text-right" x-text="a.ratings"></td>
+                                <td class="px-3 py-1.5 text-right text-gray-400" x-text="fmtNum(a.ratings_count)"></td>
+                                <td class="px-3 py-1.5 text-right text-gray-500" x-text="fmtNum(a.online_days)"></td>
+                                <td class="px-3 py-1.5 text-center">
+                                    <span x-show="a.is_fba" class="text-green-400 text-xs">FBA</span>
+                                    <span x-show="!a.is_fba" class="text-gray-500 text-xs">FBM</span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div x-show="sortedAsins.length === 0" class="text-center text-gray-500 py-8">暂无匹配 ASIN</div>
+            </div>
+        </div>
+
+        <!-- 保存赛道 + 已保存列表 -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="text-sm font-semibold mb-3">保存赛道</h3>
+            <div class="flex gap-2 mb-4">
+                <input x-model="nicheName" placeholder="赛道名称" class="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-48" />
+                <button @click="saveNiche()" :disabled="!nicheName || activeRoots.size === 0"
+                        class="bg-green-600 hover:bg-green-500 disabled:opacity-50 px-4 py-1.5 rounded text-sm">保存</button>
+            </div>
+
+            <template x-if="niches.length > 0">
+                <div>
+                    <h4 class="text-xs text-gray-500 mb-2">已保存赛道</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="n in niches" :key="n.id">
+                            <div class="bg-gray-700 rounded-lg px-3 py-2 text-xs flex items-center gap-2">
+                                <button @click="loadNiche(n)" class="hover:text-blue-400" x-text="n.name"></button>
+                                <span class="text-gray-500" x-text="'(' + n.keyword_count + '词/' + n.asin_count + '品)'"></span>
+                                <button @click="deleteNiche(n.id)" class="text-red-400 hover:text-red-300 ml-1">&times;</button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    [x-cloak] { display: none !important; }
+    .bg-gray-750 { background-color: #1f2937; }
+    .bg-gray-750\:hover:hover { background-color: #374151; }
+    tr:hover td { background-color: rgba(55, 65, 81, 0.5); }
+</style>
+
+<script>
+function dashboard() {
+    return {
+        stage: 'upload_kw',
+        stages: [
+            { key: 'upload_kw', label: '装关键词' },
+            { key: 'asins', label: '提取ASIN' },
+            { key: 'upload_prod', label: '装ASIN数据' },
+            { key: 'filter', label: '词根看板' },
+        ],
+        doneStages: new Set(),
+
+        domain: 'US',
+        kwBatchLabel: '',
+        prodBatchLabel: '',
+        uploading: false,
+        uploadMsg: '',
+        uploadOk: false,
+        prodLoaded: false,
+
+        // ASIN extraction
+        asinText: '',
+        asinTotal: 0,
+        copied: false,
+
+        // Word roots
+        roots: [],
+        activeRoots: new Set(),
+        hintRoots: new Set(),
+
+        // Filter results
+        keywords: [],
+        asins: [],
+        summary: { keyword_count: 0, asin_count: 0, total_sv: 0, total_purchases: 0, avg_cpc: 0, avg_price: 0, total_monthly_sales: 0, total_monthly_revenue: 0 },
+
+        // Tables
+        activeTab: 'keywords',
+        kwSort: { col: 'search_volume', asc: false },
+        asinSort: { col: 'monthly_sales', asc: false },
+
+        // Niches
+        nicheName: '',
+        niches: [],
+
+        // ── Init ──
+        async init() {
+            // Check for existing batches
+            try {
+                const r = await fetch(`/api/dashboard/batches?domain=${this.domain}`);
+                const d = await r.json();
+                if (d.keyword_batches?.length || d.product_batches?.length) {
+                    // If both exist, can jump to filter directly
+                }
+            } catch (e) { /* ignore */ }
+        },
+
+        // ── Stage 1: Upload keywords ──
+        async uploadKeywords() {
+            const fileEl = document.getElementById('kwFile');
+            const file = fileEl?.files?.[0];
+            if (!file) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+
+            this.uploading = true; this.uploadMsg = '';
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('domain', this.domain);
+                const r = await fetch('/api/dashboard/upload/keywords', { method: 'POST', body: fd });
+                const d = await r.json();
+                if (d.success) {
+                    this.kwBatchLabel = d.batch_label;
+                    this.uploadMsg = `已导入 ${d.keyword_count} 个关键词, ${d.word_root_count} 个词根`;
+                    this.uploadOk = true;
+                    this.doneStages.add('upload_kw');
+                    await this.fetchAsins();
+                } else {
+                    this.uploadMsg = d.error || '上传失败';
+                    this.uploadOk = false;
+                }
+            } catch (e) {
+                this.uploadMsg = '网络错误: ' + e.message;
+                this.uploadOk = false;
+            }
+            this.uploading = false;
+        },
+
+        // ── Stage 2: Fetch unique ASINs ──
+        async fetchAsins() {
+            try {
+                const r = await fetch(`/api/dashboard/asins?keyword_batch_label=${encodeURIComponent(this.kwBatchLabel)}&domain=${this.domain}`);
+                const d = await r.json();
+                this.asinText = d.asins.join('\n');
+                this.asinTotal = d.count;
+                this.stage = 'asins';
+            } catch (e) {
+                this.uploadMsg = '获取 ASIN 列表失败';
+                this.uploadOk = false;
+            }
+        },
+
+        copyAsins() {
+            navigator.clipboard.writeText(this.asinText).then(() => { this.copied = true; setTimeout(() => this.copied = false, 2000); });
+        },
+
+        // ── Stage 3: Upload products ──
+        async uploadProducts() {
+            const fileEl = document.getElementById('prodFile');
+            const file = fileEl?.files?.[0];
+            if (!file) { this.uploadMsg = '请选择文件'; this.uploadOk = false; return; }
+
+            this.uploading = true; this.uploadMsg = '';
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('domain', this.domain);
+                const r = await fetch('/api/dashboard/upload/products', { method: 'POST', body: fd });
+                const d = await r.json();
+                if (d.success) {
+                    this.prodBatchLabel = d.batch_label;
+                    this.uploadMsg = `已导入 ${d.product_count} 个产品`;
+                    this.uploadOk = true;
+                    this.prodLoaded = true;
+                    this.doneStages.add('upload_prod');
+                } else {
+                    this.uploadMsg = d.error || '上传失败';
+                    this.uploadOk = false;
+                }
+            } catch (e) {
+                this.uploadMsg = '网络错误: ' + e.message;
+                this.uploadOk = false;
+            }
+            this.uploading = false;
+        },
+
+        async enterFilter() {
+            this.stage = 'filter';
+            // Load word roots
+            try {
+                const r = await fetch(`/api/dashboard/word-roots?keyword_batch_label=${encodeURIComponent(this.kwBatchLabel)}&domain=${this.domain}`);
+                const d = await r.json();
+                this.roots = d.roots;
+            } catch (e) { /* ignore */ }
+            // Load saved niches
+            await this.loadNiches();
+            // Apply empty filter (show all)
+            await this.applyFilter();
+        },
+
+        // ── Filter ──
+        async applyFilter() {
+            try {
+                const r = await fetch('/api/dashboard/filter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        keyword_batch_label: this.kwBatchLabel,
+                        product_batch_label: this.prodBatchLabel,
+                        root_words: [...this.activeRoots],
+                        domain: this.domain,
+                    }),
+                });
+                const d = await r.json();
+                this.keywords = d.keywords || [];
+                this.asins = d.asins || [];
+                this.summary = d.summary || { keyword_count: 0, asin_count: 0, total_sv: 0, total_purchases: 0, avg_cpc: 0, avg_price: 0, total_monthly_sales: 0, total_monthly_revenue: 0 };
+                // Compute hint roots
+                this.updateHintRoots();
+            } catch (e) { console.error(e); }
+        },
+
+        updateHintRoots() {
+            this.hintRoots = new Set();
+            const allWords = new Set();
+            for (const k of this.keywords) {
+                const words = k.keyword.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2);
+                words.forEach(w => allWords.add(w));
+            }
+            for (const r of this.roots) {
+                if (!this.activeRoots.has(r.word) && allWords.has(r.word)) {
+                    this.hintRoots.add(r.word);
+                }
+            }
+        },
+
+        toggleRoot(word) {
+            if (this.activeRoots.has(word)) {
+                this.activeRoots.delete(word);
+            } else {
+                this.activeRoots.add(word);
+            }
+            this.applyFilter();
+        },
+
+        getChipClass(word) {
+            if (this.activeRoots.has(word)) return 'bg-blue-600 text-white border-blue-500';
+            if (this.hintRoots.has(word)) return 'bg-transparent text-red-400 border-red-500';
+            return 'bg-gray-700 text-gray-500 border-gray-600';
+        },
+
+        selectAllRoots() { this.roots.forEach(r => this.activeRoots.add(r.word)); this.applyFilter(); },
+        deselectAllRoots() { this.activeRoots = new Set(); this.applyFilter(); },
+        selectTopRoots(n) {
+            this.activeRoots = new Set();
+            this.roots.slice(0, n).forEach(r => this.activeRoots.add(r.word));
+            this.applyFilter();
+        },
+
+        // ── Sorting ──
+        sortKw(col) {
+            if (this.kwSort.col === col) this.kwSort.asc = !this.kwSort.asc;
+            else { this.kwSort.col = col; this.kwSort.asc = false; }
+        },
+        get sortedKeywords() {
+            const arr = [...this.keywords];
+            const col = this.kwSort.col;
+            arr.sort((a, b) => {
+                const va = a[col] ?? '', vb = b[col] ?? '';
+                if (typeof va === 'string') return this.kwSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.kwSort.asc ? va - vb : vb - va;
+            });
+            return arr;
+        },
+
+        sortAsin(col) {
+            if (this.asinSort.col === col) this.asinSort.asc = !this.asinSort.asc;
+            else { this.asinSort.col = col; this.asinSort.asc = false; }
+        },
+        get sortedAsins() {
+            const arr = [...this.asins];
+            const col = this.asinSort.col;
+            arr.sort((a, b) => {
+                const va = a[col] ?? '', vb = b[col] ?? '';
+                if (typeof va === 'string') return this.asinSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return this.asinSort.asc ? va - vb : vb - va;
+            });
+            return arr;
+        },
+
+        // ── Niches ──
+        async saveNiche() {
+            if (!this.nicheName) return;
+            try {
+                const r = await fetch('/api/dashboard/niches', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.nicheName,
+                        keyword_batch_label: this.kwBatchLabel,
+                        product_batch_label: this.prodBatchLabel,
+                        root_words: [...this.activeRoots],
+                        domain: this.domain,
+                        keyword_count: this.summary.keyword_count,
+                        asin_count: this.summary.asin_count,
+                        stats_snapshot: this.summary,
+                    }),
+                });
+                const d = await r.json();
+                if (d.id) {
+                    this.nicheName = '';
+                    await this.loadNiches();
+                }
+            } catch (e) { console.error(e); }
+        },
+
+        async loadNiches() {
+            try {
+                const r = await fetch(`/api/dashboard/niches?keyword_batch_label=${encodeURIComponent(this.kwBatchLabel)}`);
+                const d = await r.json();
+                this.niches = d.niches || [];
+            } catch (e) { /* ignore */ }
+        },
+
+        async loadNiche(n) {
+            this.activeRoots = new Set(n.root_words);
+            await this.applyFilter();
+        },
+
+        async deleteNiche(id) {
+            if (!confirm('删除此赛道？')) return;
+            try {
+                await fetch(`/api/dashboard/niche/${id}`, { method: 'DELETE' });
+                await this.loadNiches();
+            } catch (e) { console.error(e); }
+        },
+
+        // ── Helpers ──
+        fmtNum(v) {
+            if (v == null || v === 0) return '0';
+            if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+            if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+            if (Number.isInteger(v)) return v.toLocaleString();
+            return v.toFixed(1);
+        },
+    };
+}
+</script>
+
+{% endblock %}

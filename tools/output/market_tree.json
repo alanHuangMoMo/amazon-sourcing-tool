@@ -1,0 +1,241 @@
+{
+  "market": "个性化礼品市场",
+  "segments": [
+    {
+      "name": "服装",
+      "name_en": "Apparel",
+      "merged_from": [
+        "comm_32",
+        "comm_68",
+        "comm_88",
+        "comm_66"
+      ],
+      "sub_dimensions": {
+        "产品形态": {
+          "en": "product_form",
+          "values": [
+            "shirts",
+            "tshirt",
+            "tshirts",
+            "tee"
+          ]
+        },
+        "定制方式": {
+          "en": "customization",
+          "values": [
+            "custom",
+            "personalized",
+            "customized",
+            "print"
+          ]
+        },
+        "人群": {
+          "en": "audience",
+          "values": [
+            "men",
+            "women",
+            "unisex",
+            "kids",
+            "girlfriend"
+          ]
+        },
+        "设计元素": {
+          "en": "design_element",
+          "values": [
+            "photo",
+            "face",
+            "image",
+            "name"
+          ]
+        }
+      },
+      "core_terms": [
+        "shirts",
+        "tshirt",
+        "tshirts"
+      ],
+      "non_english": [],
+      "note": "服装是最大segment，包含T恤、衬衫等，定制需求强，人群覆盖广。"
+    },
+    {
+      "name": "饮具",
+      "name_en": "Drinkware",
+      "merged_from": [
+        "comm_73",
+        "comm_92",
+        "comm_54"
+      ],
+      "sub_dimensions": {
+        "产品形态": {
+          "en": "product_form",
+          "values": [
+            "mug",
+            "mugs",
+            "cup",
+            "tumblers",
+            "glass",
+            "glasses",
+            "wine"
+          ]
+        },
+        "定制方式": {
+          "en": "customization",
+          "values": [
+            "custom",
+            "personalized",
+            "customized"
+          ]
+        },
+        "人群": {
+          "en": "audience",
+          "values": [
+            "men",
+            "women",
+            "mom",
+            "kids"
+          ]
+        },
+        "设计元素": {
+          "en": "design_element",
+          "values": [
+            "photo",
+            "name",
+            "names",
+            "coffee"
+          ]
+        }
+      },
+      "core_terms": [
+        "mug",
+        "mugs",
+        "cup",
+        "tumblers"
+      ],
+      "non_english": [],
+      "note": "饮具是第二大segment，马克杯和随行杯为主，个性化需求集中在名字和照片。"
+    },
+    {
+      "name": "礼品综合",
+      "name_en": "Gifts General",
+      "merged_from": [
+        "comm_95",
+        "comm_80"
+      ],
+      "sub_dimensions": {
+        "人群": {
+          "en": "audience",
+          "values": [
+            "women",
+            "men",
+            "mothers",
+            "mom",
+            "kids"
+          ]
+        },
+        "场景": {
+          "en": "occasion",
+          "values": [
+            "day",
+            "mothers",
+            "birthday"
+          ]
+        },
+        "定制方式": {
+          "en": "customization",
+          "values": [
+            "personalized",
+            "customized",
+            "custom",
+            "monogrammed",
+            "customizable"
+          ]
+        }
+      },
+      "core_terms": [
+        "gift",
+        "gifts"
+      ],
+      "non_english": [],
+      "note": "礼品综合segment覆盖节日和日常送礼，女性及母亲节需求突出。"
+    },
+    {
+      "name": "西班牙语市场",
+      "name_en": "Spanish Market",
+      "merged_from": [
+        "comm_91"
+      ],
+      "sub_dimensions": {
+        "产品形态": {
+          "en": "product_form",
+          "values": [
+            "tazas",
+            "vaso",
+            "vasos",
+            "playeras",
+            "camisa",
+            "camisas",
+            "camisetas",
+            "termo",
+            "termos"
+          ]
+        },
+        "定制方式": {
+          "en": "customization",
+          "values": [
+            "personalizadas",
+            "personalizada",
+            "personalizados",
+            "personalizado",
+            "personalizar"
+          ]
+        },
+        "人群": {
+          "en": "audience",
+          "values": [
+            "mujer",
+            "hombre",
+            "mama"
+          ]
+        },
+        "材质": {
+          "en": "material",
+          "values": [
+            "cafe"
+          ]
+        }
+      },
+      "core_terms": [
+        "tazas",
+        "camisas",
+        "vasos"
+      ],
+      "non_english": [
+        "foto",
+        "personalizadas",
+        "playeras",
+        "con",
+        "vaso",
+        "tazas",
+        "personalizada",
+        "fotos",
+        "camisa",
+        "mujer",
+        "personalizados",
+        "camisetas",
+        "vasos",
+        "cafe",
+        "camisas",
+        "taza",
+        "personalizado",
+        "hombre",
+        "para",
+        "de",
+        "termo",
+        "personalizar",
+        "termos",
+        "regalos"
+      ],
+      "note": "西班牙语市场独立存在，饮具和服装均有覆盖，定制词根丰富。"
+    }
+  ]
+}

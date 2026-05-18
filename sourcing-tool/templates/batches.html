@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">批次历史</h1>
+
+    {% if batches %}
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-gray-700/50 text-gray-400 text-left">
+                    <th class="py-3 px-4">批次 ID</th>
+                    <th class="py-3 px-4">状态</th>
+                    <th class="py-3 px-4">原始行数</th>
+                    <th class="py-3 px-4">清洗通过</th>
+                    <th class="py-3 px-4">候选数</th>
+                    <th class="py-3 px-4">时间</th>
+                    <th class="py-3 px-4">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in batches %}
+                <tr class="border-t border-gray-700/50">
+                    <td class="py-3 px-4 font-mono text-xs text-gray-300">{{ b.batch_id[:20] }}</td>
+                    <td class="py-3 px-4">
+                        {% if b.status == 'done' %}
+                            <span class="text-green-400">✅ 完成</span>
+                        {% elif b.status == 'failed' %}
+                            <span class="text-red-400">❌ 失败</span>
+                        {% elif b.status == 'processing' %}
+                            <span class="text-yellow-400">⏳ 处理中</span>
+                        {% else %}
+                            <span class="text-gray-400">{{ b.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-4 font-mono">{{ b.total_aba_rows }}</td>
+                    <td class="py-3 px-4 font-mono">{{ b.step1_passed }}</td>
+                    <td class="py-3 px-4 font-mono">{{ b.final_candidates }}</td>
+                    <td class="py-3 px-4 text-gray-400 text-xs">{{ b.created_at.strftime('%m-%d %H:%M') if b.created_at else '-' }}</td>
+                    <td class="py-3 px-4">
+                        {% if b.status == 'done' %}
+                            <a href="/results/memory/{{ b.batch_id }}" class="text-blue-400 hover:text-blue-300 text-xs">查看</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="bg-gray-800 rounded-xl p-12 border border-gray-700 text-center text-gray-500">
+        暂无批次记录，<a href="/" class="text-blue-400 hover:text-blue-300">去上传</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
