@@ -2,9 +2,12 @@ from sqlalchemy import create_engine, Column, Integer, Float, String, Text, Date
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from datetime import datetime, timezone
 import os
+import sys
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 if DATABASE_URL:
+    if "sslmode" not in DATABASE_URL.lower() and "supabase" in DATABASE_URL:
+        DATABASE_URL += "?sslmode=require" if "?" not in DATABASE_URL else "&sslmode=require"
     engine = create_engine(DATABASE_URL, echo=False, pool_size=5, max_overflow=10)
 else:
     DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
@@ -480,7 +483,11 @@ class NicheTrack(Base):
 
 
 def init_db():
-    Base.metadata.create_all(engine)
+    try:
+        Base.metadata.create_all(engine)
+    except Exception as e:
+        print(f"[init_db] WARNING: Could not create tables: {e}", file=sys.stderr)
+        # Don't crash — app can still serve pages, DB operations will fail gracefully
 
 
 def get_db():
