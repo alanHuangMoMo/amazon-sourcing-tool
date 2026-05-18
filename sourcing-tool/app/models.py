@@ -6,7 +6,7 @@ import sys
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 if DATABASE_URL:
-    if "sslmode" not in DATABASE_URL.lower() and "supabase" in DATABASE_URL:
+    if "sslmode" not in DATABASE_URL.lower() and "supabase" in DATABASE_URL and ":6543" not in DATABASE_URL:
         DATABASE_URL += "?sslmode=require" if "?" not in DATABASE_URL else "&sslmode=require"
     engine = create_engine(DATABASE_URL, echo=False, pool_size=5, max_overflow=10)
 else:
