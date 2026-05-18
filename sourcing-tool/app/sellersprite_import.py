@@ -282,7 +282,6 @@ def import_product_to_db(records: list[dict], domain: str, batch_id: str,
                 existing = db.query(SellerspriteProduct).filter(
                     SellerspriteProduct.asin == r["asin"],
                     SellerspriteProduct.domain == domain,
-                    SellerspriteProduct.data_period == data_period,
                 ).first()
                 if existing and existing.queried_at:
                     if cutoff and existing.queried_at > cutoff:

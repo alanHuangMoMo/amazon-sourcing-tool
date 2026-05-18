@@ -131,7 +131,6 @@ def import_keyword_mining_to_db(records: list[dict], domain: str, batch_label: s
                 existing = db.query(SellerspriteKeyword).filter(
                     SellerspriteKeyword.keyword == r["keyword"],
                     SellerspriteKeyword.domain == domain,
-                    SellerspriteKeyword.data_period == data_period,
                 ).first()
                 if existing:
                     db.delete(existing)
